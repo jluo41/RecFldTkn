@@ -1,25 +1,20 @@
 # cohorts are historical file, once given, won't be changed in the future.
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%  where to get the raw Human data.
-RawRootID: 'patient_id_encoded' # <--- HumanID in Raw Data. 
+RawRootID: 'XXXXXXXXX' # <--- HumanID in Raw Data. 
 
 # DataSpace:
 CohortInfo:
-  RawData2023Nov_Trulicity:
+  COHORT_NAME_XXXXXX: # <---- change this.
     cohort_label: 1
-    cohort_name: RawData2023Nov_Trulicity
-    FolderPath: $DATA_RAW$/2023_11_30_30days_Trulicity
+    FolderPath: $DATA_RAW$/COHORT_NAME_XXXXXX
 
-    
+
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%  where to save the df_Human data.
-RootID:  'PID'        # <--- HumanID in RFT Data. 
-RecName: 'PRawRecNum' # <---- df_Human Name # P-RawRecNum
+RootID:  'XXXXXXXXX'        # <--- HumanID in RFT Data. 
+RecName: 'XXXXXXXXX' # <---- df_Human Name # P-RawRecNum
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%  the folders where to save the data
-# Relative to DataSpace
-rec_folder:  '$DATA_RFT$/RecAttr/' # in the same folder. 
-fld_folder:  '$DATA_RFT$/FldTkn/'
-hfds_folder: '$DATA_RFT$/HfDataset/'
 
 # Relative to WorkSpace
 recattr_pyfolder: '$CODE_FN$/fn_recattr/'
