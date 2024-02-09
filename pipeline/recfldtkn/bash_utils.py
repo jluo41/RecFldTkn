@@ -1,15 +1,9 @@
+import os
+import shlex
 import subprocess
 import multiprocessing
-import argparse
-import subprocess
-import shlex
-import os
-import sys
-from pprint import pprint 
-from .configfn import load_cohort_args
-from .obsname import convert_RecObsName_and_CaseTkn_to_CaseObsName
-from .loadtools import load_module_variables, update_args_to_list
-from .constaidatatools import convert_case_observations_to_co_to_observation
+from .loadtools import update_args_to_list
+from .pipeline_case import convert_case_observations_to_co_to_observation
 
 def run_command_fn(command):
     try:
@@ -45,13 +39,72 @@ def run_multi_process(command_list, core_num):
     return result  
 
 
+def bash_run_recfdltkn_to_hfds(args, 
+                               cohort_label = None, 
+                               record_name = None, 
+                               fldtkn_name_list = None,
+                               script_path = None):
+    
+    '''
+    python ../scripts/run_recfldtkn_to_hfds.py  \
+        --cohort_label 1 \
+        --record_name \
+            "Rx" \
+        --fldtkn_name_list \
+            "Rx-CmpCateTkn" \
+            "Rx-InsCateTkn" \
+            "Rx-QuantNumeTkn" \
+            "Rx-ServiceCateTkn" \
+            "Rx-SysCateTkn"
+    '''
+    if script_path is None: 
+        script_path = '../scripts/run_recfldtkn_to_hfds.py'
+
+    assert os.path.exists(script_path)
+
+    # 1. cohort_label
+    if cohort_label is None: cohort_label = args.cohort_label
+    print('cohort_label ---->', cohort_label)
+
+    # 2. record_name
+    if record_name is None: record_name = args.record_name
+    print('record_name ---->', record_name)
+
+    # 3. fldtkn_name_list
+    if fldtkn_name_list is None: fldtkn_name_list = update_args_to_list(args.fldtkn_name_list)
+    print('fldtkn_name_list ---->', fldtkn_name_list)
+    if len(fldtkn_name_list) > 0:
+        fldtkn_name_list_string = ' '.join(fldtkn_name_list)
+        command = f'''
+                python {script_path} \
+                    --cohort_label {cohort_label} \
+                    --record_name {record_name} \
+                    --fldtkn_name_list {fldtkn_name_list_string}
+                '''
+    else:
+        command = f'''
+                python {script_path} \
+                    --cohort_label {cohort_label} \
+                    --record_name {record_name} 
+                '''
+    print(command)
+    # raise ValueError('Stop Here')
+    command_list = [command]
+    run_multi_process(command_list, 1)
+
 
 def bash_run_case_observation(args, 
-                            case_type = None, 
-                            case_observations = None, 
-                            case_id_columns = None, 
-                            batch_size = 1000,
-                            GROUP_NUM = 10):
+                              case_type = None, 
+                              case_observations = None, 
+                              case_id_columns = None, 
+                              batch_size = 1000,
+                              GROUP_NUM = 10, 
+                              script_path = None):
+    
+    if script_path is None: 
+        script_path = '../scripts/run_case_observations.py'
+    
+    assert os.path.exists(script_path)
     
     # 1. group
     group_id_list = args.group_id_list
@@ -82,7 +135,7 @@ def bash_run_case_observation(args,
             case_id_columns_list = ' '.join(case_id_columns)
 
             command = f'''
-            python ../run_case_observations.py \
+            python {script_path} \
                 --group_id {group_id} \
                 --case_type {case_type} \
                 --case_id_columns {case_id_columns_list} \
@@ -102,7 +155,6 @@ def bash_run_case_observation(args,
     run_multi_process(command_list, core_num)
 
 
-
 def bash_run_case_taskop(args, 
                         case_type_list = None, 
                         case_observations = None, 
@@ -111,7 +163,14 @@ def bash_run_case_taskop(args,
                         post_process = None, 
                         batch_size = 1000,
                         GROUP_NUM = 10, 
+                        script_path = None,
                         ):
+    
+    if script_path is None: 
+        script_path = '../scripts/run_case_taskop.py'
+    
+    assert os.path.exists(script_path)
+    
     # 1. group
     group_id_list = args.group_id_list
     core_num = args.core_num
@@ -144,7 +203,7 @@ def bash_run_case_taskop(args,
         case_observations_list = ' '.join(case_observations)
         # in the workspace folder.
         command = f'''
-        python ../run_case_taskop.py \
+        python {script_path} \
             --group_id_list {group_id_list} \
             --case_type_list {case_type_list_incmd} \
             --case_id_columns {case_id_columns_list} \
@@ -155,10 +214,6 @@ def bash_run_case_taskop(args,
         '''
         print(command)
         command_list.append(command)
-        # if len(command_list) == core_num:
-        #     # pprint(command_list)
-        #     run_multi_process(command_list, core_num)
-        #     command_list = []
 
     # pprint(command_list)
     assert core_num == 1
