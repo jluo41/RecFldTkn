@@ -1,0 +1,128 @@
+import yaml
+import os
+import pandas as pd
+from .ckpd_obs import Ckpd_ObservationS
+
+def load_cohort_args(recfldtkn_config_path, SPACE = None, use_inference = False):
+    file_path = os.path.join(recfldtkn_config_path, 'Cohort.yaml')
+    with open(file_path, 'r') as file: cohort_args = yaml.safe_load(file)
+    cohort_args['recfldtkn_config_path'] = recfldtkn_config_path
+    
+    if SPACE is not None:
+        cohort_args['SPACE'] = SPACE
+        cohort_args['rec_folder'] = cohort_args['rec_folder'].replace('$DATA_RFT$', SPACE['DATA_RFT']) 
+        cohort_args['fld_folder'] = cohort_args['rec_folder'].replace('$DATA_RFT$', SPACE['DATA_RFT']) 
+        cohort_args['hfds_folder'] = cohort_args['hfds_folder'].replace('$DATA_RFT$', SPACE['DATA_RFT']) 
+        cohort_args['recattr_pyfolder'] = cohort_args['recattr_pyfolder'].replace('$CODE_FN$', SPACE['CODE_FN']) 
+        cohort_args['fldtkn_pyfolder'] = cohort_args['fldtkn_pyfolder'].replace('$CODE_FN$', SPACE['CODE_FN']) 
+        cohort_args['humanrec_pyfolder'] = cohort_args['humanrec_pyfolder'].replace('$CODE_FN$', SPACE['CODE_FN']) 
+        cohort_args['pypath'] = os.path.join(cohort_args['humanrec_pyfolder'], 'humanrec.py')
+        for CohortName, CohortConfig in cohort_args['CohortInfo'].items():
+            CohortConfig['FolderPath'] = CohortConfig['FolderPath'].replace('$DATA_RAW$', SPACE['DATA_RAW']) 
+
+    if use_inference:
+        # CohortInfo = cohort_args['CohortInfo']
+        # for shadow_CohortName, CohortConfig in CohortInfo.items(): break 
+        # print(shadow_CohortName)
+        # CohortConfig = CohortConfig.copy()
+        CohortConfig = {}
+        CohortName = 'inference'
+        cohort_label = 9 # <------- to do
+        CohortConfig['cohort_label'] = cohort_label
+        CohortConfig['cohort_name'] = CohortName
+        CohortConfig['FolderPath'] = os.path.join(SPACE['DATA_RAW'], CohortName)
+        cohort_args['CohortInfo'][CohortName] = CohortConfig
+
+    cohort_args['Ckpd_ObservationS'] = Ckpd_ObservationS
+    return cohort_args
+
+    
+def get_rec_related_size(RecName, cohort_args):
+    size = cohort_args['RecName_to_RFT_GROUP_SIZE']['Default']
+    RFT_GROUP_SIZE = cohort_args['RecName_to_RFT_GROUP_SIZE'].get(RecName, size)
+    
+    size = cohort_args['RecName_to_RFT_idx_group_size']['Default']
+    idx_group_size = cohort_args['RecName_to_RFT_idx_group_size'].get(RecName, size)
+    
+    usebucket = cohort_args['RecName_to_RFT_usebucket']['Default']
+    usebucket = cohort_args['RecName_to_RFT_usebucket'].get(RecName, usebucket)
+
+    return RFT_GROUP_SIZE, idx_group_size, usebucket
+
+
+def load_record_args(RecName, cohort_args, use_inference = False, recfldtkn_config_path = None):
+    SPACE = cohort_args['SPACE']
+    recfldtkn_config_path = cohort_args['recfldtkn_config_path']
+    file_path = os.path.join(recfldtkn_config_path, 'Record', f'{RecName}.yaml')
+    if not os.path.exists(file_path):
+        record_args = {}
+        with open(file_path, 'w') as file: pass
+    else:
+        with open(file_path, 'r') as file: record_args = yaml.safe_load(file)
+        if record_args is None: record_args = {}
+        for Cohort, RecTables_args in record_args.get('CohortInfo', {}).items():
+            for TableBase, Table_args in RecTables_args.items():
+                Table_args['raw_data_path'] = Table_args['raw_data_path'].replace('$DATA_RAW$', SPACE['DATA_RAW'])
+                RecTables_args[TableBase] = Table_args
+                
+    RFT_GROUP_SIZE, idx_group_size, usebucket = get_rec_related_size(RecName, cohort_args)
+    record_args['RFT_GROUP_SIZE'] = RFT_GROUP_SIZE
+    record_args['idx_group_size'] = idx_group_size
+    record_args['usebucket'] = usebucket
+    record_args['GROUP_SIZE'] = RFT_GROUP_SIZE
+    record_args['folder'] = cohort_args['rec_folder']
+    record_args['rec_folder'] = cohort_args['rec_folder']
+    record_args['pypath'] = os.path.join(cohort_args['recattr_pyfolder'], f'{RecName}.py')
+    record_args['recfldtkn_config_path'] = recfldtkn_config_path
+    record_args['yaml_file_path'] = file_path
+
+    if use_inference:
+        CohortInfo = record_args.get('CohortInfo', {})
+        # print('CohortInfo', CohortInfo)
+        for shadow_CohortName, shadow_RecTables_args in CohortInfo.items(): break
+        
+        CohortName = 'inference'
+        # print(shadow_CohortName)
+        RecTables_args = shadow_RecTables_args.copy()
+        for RecTable, Table_args in RecTables_args.items():
+            path = Table_args['raw_data_path']
+            filename = path.split('/')[-1]  
+            new_path = os.path.join(SPACE['DATA_RAW'], 'inference', filename)
+            Table_args['raw_data_path'] = new_path
+            RecTables_args[RecTable] = Table_args
+        print('RecTables_args', RecTables_args)
+        record_args['CohortInfo'][CohortName] = RecTables_args
+
+    return record_args
+
+
+def load_fldtkn_args(RecName, FldTknName, cohort_args, recfldtkn_config_path = None):
+    recfldtkn_config_path = cohort_args['recfldtkn_config_path']
+    file_path = os.path.join(recfldtkn_config_path, 'Record', f'{RecName}.yaml')
+    assert os.path.exists(file_path)
+    # with open(file_path, 'r') as file: record_args = yaml.safe_load(file)
+    record_args = load_record_args(RecName, cohort_args, recfldtkn_config_path)
+    
+    fldtkn_args = {}
+    fldtkn_args = record_args['FldTknInfo'].get(FldTknName, fldtkn_args)
+    fldtkn_args['attr_cols'] = record_args['RecIDChain'] + record_args.get('DTCols', []) + fldtkn_args.get('value_cols', [])
+    fldtkn_args['FldTknName'] = FldTknName
+
+    if 'external_source_path' in fldtkn_args:
+        fldtkn_args['external_source_path'] = fldtkn_args['external_source_path'].replace('$DATA_RAW$', cohort_args['SPACE']['DATA_RAW'])
+        fldtkn_args['external_source'] = pd.read_pickle(fldtkn_args['external_source_path'])    
+
+    RFT_GROUP_SIZE, idx_group_size, usebucket = get_rec_related_size(RecName, cohort_args)
+    fldtkn_args['RFT_GROUP_SIZE'] = RFT_GROUP_SIZE
+    fldtkn_args['idx_group_size'] = idx_group_size
+    fldtkn_args['usebucket'] = usebucket
+    fldtkn_args['GROUP_SIZE'] = RFT_GROUP_SIZE
+
+    fldtkn_args['pypath'] = os.path.join(cohort_args['fldtkn_pyfolder'], FldTknName.replace('-', '_') + '.py')
+    fldtkn_args['folder'] = cohort_args['fld_folder']
+    fldtkn_args['recfldtkn_config_path'] = recfldtkn_config_path
+    fldtkn_args['yaml_file_path'] = file_path
+
+    return fldtkn_args
+
+

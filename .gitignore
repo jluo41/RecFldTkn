@@ -1,0 +1,33 @@
+# data
+# data/
+*_TODO/
+document/
+# _static/
+_Data/
+_Model/
+Data_*/
+Documents/
+2022Data/
+_old/
+.ipynb_checkpoints/
+__pycache__/*
+*.pyc  
+*/.ipynb_checkpoints/
+*/_old 
+*/__pycache__/*
+*/Output
+*/__pycache__
+*/*/__pycache__
+*/_230113version
+*.log
+*.pkl
+# *.p
+*/L2
+.DS_Store
+*.rec2feat.egg-info/*
+0-DataRaw
+*/TODO/
+TODO/
+*.code-workspace*
+*-Data*
+**/Model_**/

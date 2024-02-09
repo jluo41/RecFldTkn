@@ -1,0 +1,66 @@
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%% TableBase sources from different cohorts.
+CohortInfo: # Cohort
+  RawData2023Nov_Trulicity:
+    RxBase: 
+      raw_data_path: '$DATA_RAW$/2023_11_30_30days_Trulicity/prescription_df_de_identified.csv'
+      RawRootID: 'patient_id_encoded'
+      RecNumColumn: 'prescription' # in Human2RecNum, the related table name
+      raw_columns:
+        - patient_id_encoded
+        - patient_gender
+        - patient_age_bucket
+        - patient_zipcode_3
+
+
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%  where to save the Record data.
+RecName: P     # name of the record.
+RecID: 'PID'   # ID of the record. not necessary to be like this: RecID = RecName + 'ID'.
+RecIDChain: 
+  - PID
+RawRecID:
+  - patient_id_encoded
+ParentRecName: 
+
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%  the final fld_cols to save.
+attr_cols:
+  - PID
+  - patient_id_encoded
+  - patient_gender
+  - patient_age_bucket
+  - patient_zipcode_3
+
+# the transform py function is available in rawrec2recfld folder.
+pypath: 
+
+
+FldTknInfo:
+
+  P-DemoTkn:
+    FldTknName: P-DemoTkn
+    value_cols:
+      - patient_gender
+      - patient_age_bucket  
+
+  P-Zip3DemoNumeTkn:
+    external_source_path: '$DATA_RAW$/ZipInfo/Zip3/National_Demographic_Charater-Zip3-DemoNumeTkn.p'
+    FldTknName: P-Zip3DemoNumeTkn
+    value_cols:
+      - patient_zipcode_3
+
+  P-Zip3EconNumeTkn:
+    external_source_path: '$DATA_RAW$/ZipInfo/Zip3/National_Economics_Charater-Zip3-EconNumeTkn.p'
+    FldTknName: P-Zip3EconNumeTkn
+    value_cols:
+      - patient_zipcode_3
+
+  P-Zip3HousingNumeTkn:
+    external_source_path: '$DATA_RAW$/ZipInfo/Zip3/National_Housing_Charater-Zip3-HousingNumeTkn.p'
+    FldTknName: P-Zip3HousingNumeTkn
+    value_cols:
+      - patient_zipcode_3
+
+  P-Zip3SocialNumeTkn:
+    external_source_path: '$DATA_RAW$/ZipInfo/Zip3/National_Social_Charater-Zip3-SocialNumeTkn.p'
+    FldTknName: P-Zip3SocialNumeTkn
+    value_cols:
+      - patient_zipcode_3    

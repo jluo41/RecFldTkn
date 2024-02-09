@@ -1,0 +1,63 @@
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%% TableBase sources from different cohorts.
+CohortInfo: # Cohort
+  RawData2023Nov_Trulicity:
+    InvBase: 
+      raw_data_path: $DATA_RAW$/2023_11_30_30days_Trulicity/invitation_df_de_identified.csv
+      RawRootID: 'patient_id_encoded'
+      RecNumColumn: 'invitation' # in Human2RecNum, the related table name
+      raw_columns: 
+        - patient_id_encoded
+        - invitation_id_encoded
+        - invitation_date
+        - created_date
+        - invitation_code
+        - invitation_type
+        - message_id
+        - consent_id
+        - invitation_error
+        - partner_id
+        - invitation_state
+        - workflow_step
+        - record_locator_encoded
+
+
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%  where to save the Record data.
+RecName: PInv    # name of the record.
+RecID: 'PInvID'   # ID of the record. not necessary to be like this: RecID = RecName + 'ID'.
+RecIDChain: 
+  - PID
+  - PInvID
+RawRecID:
+  - invitation_id_encoded
+  - patient_invitation_id_encoded
+ParentRecName: 'P'
+RecDT: DT
+
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%  the final fld_cols to save.
+attr_cols:
+  - PID
+  - PInvID
+  - invitation_id_encoded
+  - patient_invitation_id_encoded
+  - DT
+  - invitation_date
+  - invitation_code
+  - invitation_type
+  - invitation_state
+  - workflow_step
+
+# the transform py function is available in rawrec2recfld folder.
+pypath: 
+
+
+FldTknInfo:
+
+  PInv-InfoTkn:
+    FldTknName: PInv-InfoTkn
+    value_cols:
+      # - invitation_code
+      - invitation_type
+      - invitation_state
+      - workflow_step 
+
+
