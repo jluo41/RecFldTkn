@@ -1,5 +1,39 @@
 # RecName
 
+
+
+# 2. Process Record Attr
+
+Pipeline A. 
+
+You can find the functions for pipeline A in `../fn_recattr`.
+
+When you run the command `python ../run_rawrec_to_recattr.py --cohort_label 1 --record_name P`, it will automatically find: 
+* config_recfldtkn: `./config_recfldtkn/Record/P.yaml`. This yaml contains the `cohort_label` information and input information for `fn_recattr`.
+* fn_recattr: `../fn_recattr/P.py`
+
+```shell
+python ../run_rawrec_to_recattr.py \
+    --cohort_label 1 \
+    --record_name P 
+    
+python ../run_rawrec_to_recattr.py \
+    --cohort_label 1 \
+    --record_name PInv
+
+python ../run_rawrec_to_recattr.py \
+    --cohort_label 1 \
+    --record_name Rx 
+    
+python ../run_rawrec_to_recattr.py --cohort_label 1 --record_name EgmClick
+python ../run_rawrec_to_recattr.py --cohort_label 1 --record_name EgmAuthen
+python ../run_rawrec_to_recattr.py --cohort_label 1 --record_name EgmCallPharm
+python ../run_rawrec_to_recattr.py --cohort_label 1 --record_name EgmCopay
+python ../run_rawrec_to_recattr.py --cohort_label 1 --record_name EgmEdu
+python ../run_rawrec_to_recattr.py --cohort_label 1 --record_name EgmRmd
+```
+
+
 # [Step 0]: SPACE
 
 Updating the SPACE and working environments. 
