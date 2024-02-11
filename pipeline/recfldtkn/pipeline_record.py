@@ -6,34 +6,61 @@ from functools import reduce
 from .configfn import load_cohort_args, load_record_args, load_fldtkn_args
 from .loadtools import load_module_variables, load_ds_rec_and_info 
 # Setup basic configuration for logging
-# logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 logger = logging.getLogger(__name__)
 
+def read_column_value_counts_by_chunk(RawRootID, 
+                                      chunk_size, 
+                                      file_path, 
+                                      get_id_column, 
+                                      get_tablename_from_file,
+                                      rawdf = None, 
+                                      ):
+    if type(rawdf) != pd.DataFrame:
+        columns = pd.read_csv(file_path, nrows=0).columns
+    else:
+        columns = rawdf.columns 
+    id_column = get_id_column(columns)
 
-# from recfldtkn.pipeline_record import get_cohort_level_record_number_counts
+    if type(rawdf) == pd.DataFrame:
+        result = rawdf[id_column].value_counts()
+    else:
+        li = [chunk[id_column].value_counts() 
+              for chunk in pd.read_csv(file_path, usecols = [id_column], chunksize=chunk_size, low_memory=False)]
+        result = pd.concat(li)
+        result = result.groupby(result.index).sum()
+
+    name = get_tablename_from_file(file_path)
+    result = result.reset_index().rename(columns = {'count': 'RecNum', id_column: RawRootID})
+    result['RecName'] = name
+    return result
+
 
 def get_cohort_level_record_number_counts(cohort_name, cohort_label, cohort_args, filepath_to_rawdf = None):
+    
+    # Section: Load the cohort information
     ###############################
     pypath = cohort_args['pypath']
     module = load_module_variables(pypath)
-    get_id_column = module.get_id_column
-    read_column_value_counts_by_chunk = module.read_column_value_counts_by_chunk
     excluded_cols = module.excluded_cols
-    pid_recnum_result_fn = read_column_value_counts_by_chunk
     selected_source_file_suffix_list = module.selected_source_file_suffix_list
+    get_id_column = module.get_id_column
+    get_tablename_from_file = module.get_tablename_from_file
     ###############################
 
     RawRootID = cohort_args['RawRootID']
     RootID = cohort_args['RootID']  
     RootIDLength = cohort_args['RootIDLength']
-    cohort_config = cohort_args['CohortInfo'][cohort_name]
-    FolderPath = cohort_config['FolderPath']
     chunk_size = 100000
-    
+
+    ################## CohortInfo ##################
+    OneCohort_config = cohort_args['CohortInfo'][cohort_name]
+    FolderPath = OneCohort_config['FolderPath']
+    ################################################
     logger.info(f'=======cohort_label-{cohort_label}: cohort_name-{cohort_name}=======')
-    logger.info(cohort_config)
+    logger.info(OneCohort_config)
     
+    # Section: Update the filepath_to_rawdf
     if filepath_to_rawdf is None: 
         file_list = [i for i in os.listdir(FolderPath) if i.split('.')[-1] in selected_source_file_suffix_list]
         fullfile_list = [os.path.join(FolderPath, i) for i in file_list]
@@ -41,20 +68,33 @@ def get_cohort_level_record_number_counts(cohort_name, cohort_label, cohort_args
         logger.info(f'{len(fullfile_list)} <--- fullfile_list')
         filepath_to_rawdf = {filepath: None for filepath in fullfile_list}
 
+    # Section: Collect the results (RecNum) from the raw data. 
     L = []
     for file_path, rawdf in filepath_to_rawdf.items():
         if type(rawdf) == pd.DataFrame:
             if len(rawdf) == 0: continue
-            result = pid_recnum_result_fn(RawRootID, chunk_size, file_path, rawdf)
+            result = read_column_value_counts_by_chunk(RawRootID, 
+                                                       chunk_size, 
+                                                       file_path, 
+                                                       get_id_column, 
+                                                       get_tablename_from_file,
+                                                       rawdf)
             logger.info(f"'{file_path}' # {result.shape}")
+        
         elif file_path.split('.')[-1] == 'csv':
             if os.stat(file_path).st_size == 0: 
                 logger.info(f"'{file_path}' # emtpy file"); continue
             try:
-                result = pid_recnum_result_fn(RawRootID, chunk_size, file_path, rawdf)
+                result = read_column_value_counts_by_chunk(RawRootID, 
+                                                           chunk_size, 
+                                                           file_path, 
+                                                           get_id_column, 
+                                                           get_tablename_from_file,
+                                                           rawdf)
                 logger.info(f"'{file_path}' # {result.shape}")
-            except:
-                logger.info(f"'{file_path}' # error file"); continue
+            except Exception as e:
+                logger.info(f"'{file_path}' # error file. with error as {e}"); continue
+        
         else:
             if file_path.split('.')[-1] == 'parquet':
                 rawdf = pd.read_parquet(file_path)
@@ -62,23 +102,32 @@ def get_cohort_level_record_number_counts(cohort_name, cohort_label, cohort_args
                 rawdf = pd.read_pickle(file_path)
             else:
                 raise ValueError(f'file type not supported: {file_path}')
-            result = pid_recnum_result_fn(RawRootID, chunk_size, file_path, rawdf)
+            
+            result = read_column_value_counts_by_chunk(RawRootID, 
+                                                       chunk_size, 
+                                                       file_path, 
+                                                       get_id_column, 
+                                                       get_tablename_from_file,
+                                                       rawdf)
+            
             logger.info(f"'{file_path}' # {result.shape}")
             
         L.append(result)
     logger.info(f'{len(L)} <---- types of dfRec so far')
     df_all = pd.concat(L, ignore_index=True)
     df_pivot = df_all.pivot(index=RawRootID, columns='RecName', values='RecNum').reset_index()
-
+    
+    # Section: Filtering the df_Human who does not have any records. 
     recname_cols = [i for i in df_pivot.columns if i != RawRootID]
+    # -- only consider the records that is in the included_cols. 
     included_cols = [i for i in recname_cols if i not in excluded_cols]
     rec_count = df_pivot[included_cols].sum(axis = 1)
-    
     df_Human = df_pivot[rec_count > 0].reset_index(drop = True)
     df_Human['TotalRecNum'] = df_Human[included_cols].sum(axis = 1)
     logger.info(len(df_Human))
 
-    CohortLabel = cohort_config['cohort_label']
+    # Section: Adding and Updating the RootID. 
+    CohortLabel = OneCohort_config['cohort_label']
     df_Human[RootID] = range(1, len(df_Human) + 1)
     df_Human[RootID] = df_Human[RootID].apply(lambda x: int(str(CohortLabel) + str(x).zfill(RootIDLength)))
     df_Human['CohortLabel'] = CohortLabel
