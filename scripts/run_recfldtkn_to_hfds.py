@@ -92,7 +92,7 @@ if __name__ == '__main__':
     RootIDLength = cohort_args['RootIDLength']
     RootID = cohort_args['RootID']
 
-    rec_folder = cohort_args['rec_folder']
+    # rec_folder = cohort_args['rec_folder']
     RawRootID = cohort_args['RawRootID'] 
     record_args = load_record_args(RecName, cohort_args)
 
