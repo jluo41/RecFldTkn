@@ -10,15 +10,16 @@ def load_cohort_args(recfldtkn_config_path, SPACE = None, use_inference = False)
     
     if SPACE is not None:
         cohort_args['SPACE'] = SPACE
-        cohort_args['rec_folder'] = cohort_args['rec_folder'].replace('$DATA_RFT$', SPACE['DATA_RFT']) 
-        cohort_args['fld_folder'] = cohort_args['rec_folder'].replace('$DATA_RFT$', SPACE['DATA_RFT']) 
-        cohort_args['hfds_folder'] = cohort_args['hfds_folder'].replace('$DATA_RFT$', SPACE['DATA_RFT']) 
+        # cohort_args['rec_folder'] = cohort_args['rec_folder'].replace('$DATA_RFT$', SPACE['DATA_RFT']) 
+        # cohort_args['fld_folder'] = cohort_args['rec_folder'].replace('$DATA_RFT$', SPACE['DATA_RFT']) 
+        # cohort_args['hfds_folder'] = cohort_args['hfds_folder'].replace('$DATA_RFT$', SPACE['DATA_RFT']) 
         cohort_args['recattr_pyfolder'] = cohort_args['recattr_pyfolder'].replace('$CODE_FN$', SPACE['CODE_FN']) 
         cohort_args['fldtkn_pyfolder'] = cohort_args['fldtkn_pyfolder'].replace('$CODE_FN$', SPACE['CODE_FN']) 
         cohort_args['humanrec_pyfolder'] = cohort_args['humanrec_pyfolder'].replace('$CODE_FN$', SPACE['CODE_FN']) 
         cohort_args['pypath'] = os.path.join(cohort_args['humanrec_pyfolder'], 'humanrec.py')
         for CohortName, CohortConfig in cohort_args['CohortInfo'].items():
             CohortConfig['FolderPath'] = CohortConfig['FolderPath'].replace('$DATA_RAW$', SPACE['DATA_RAW']) 
+            CohortConfig['cohort_name'] = CohortName 
 
     if use_inference:
         # CohortInfo = cohort_args['CohortInfo']
@@ -70,8 +71,8 @@ def load_record_args(RecName, cohort_args, use_inference = False, recfldtkn_conf
     record_args['idx_group_size'] = idx_group_size
     record_args['usebucket'] = usebucket
     record_args['GROUP_SIZE'] = RFT_GROUP_SIZE
-    record_args['folder'] = cohort_args['rec_folder']
-    record_args['rec_folder'] = cohort_args['rec_folder']
+    # record_args['folder'] = cohort_args['rec_folder']
+    # record_args['rec_folder'] = cohort_args['rec_folder']
     record_args['pypath'] = os.path.join(cohort_args['recattr_pyfolder'], f'{RecName}.py')
     record_args['recfldtkn_config_path'] = recfldtkn_config_path
     record_args['yaml_file_path'] = file_path
@@ -119,7 +120,7 @@ def load_fldtkn_args(RecName, FldTknName, cohort_args, recfldtkn_config_path = N
     fldtkn_args['GROUP_SIZE'] = RFT_GROUP_SIZE
 
     fldtkn_args['pypath'] = os.path.join(cohort_args['fldtkn_pyfolder'], FldTknName.replace('-', '_') + '.py')
-    fldtkn_args['folder'] = cohort_args['fld_folder']
+    # fldtkn_args['folder'] = cohort_args['fld_folder']
     fldtkn_args['recfldtkn_config_path'] = recfldtkn_config_path
     fldtkn_args['yaml_file_path'] = file_path
 

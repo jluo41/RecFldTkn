@@ -12,15 +12,15 @@ logger = logging.getLogger(__name__)
 def read_column_value_counts_by_chunk(RawRootID, 
                                       chunk_size, 
                                       file_path, 
-                                      get_id_column, 
-                                      get_tablename_from_file,
+                                      get_rawrootid_from_raw_table_column, 
+                                      get_tablename_from_raw_filename,
                                       rawdf = None, 
                                       ):
     if type(rawdf) != pd.DataFrame:
         columns = pd.read_csv(file_path, nrows=0).columns
     else:
         columns = rawdf.columns 
-    id_column = get_id_column(columns)
+    id_column = get_rawrootid_from_raw_table_column(columns)
 
     if type(rawdf) == pd.DataFrame:
         result = rawdf[id_column].value_counts()
@@ -30,7 +30,7 @@ def read_column_value_counts_by_chunk(RawRootID,
         result = pd.concat(li)
         result = result.groupby(result.index).sum()
 
-    name = get_tablename_from_file(file_path)
+    name = get_tablename_from_raw_filename(file_path)
     result = result.reset_index().rename(columns = {'count': 'RecNum', id_column: RawRootID})
     result['RecName'] = name
     return result
@@ -42,10 +42,10 @@ def get_cohort_level_record_number_counts(cohort_name, cohort_label, cohort_args
     ###############################
     pypath = cohort_args['pypath']
     module = load_module_variables(pypath)
-    excluded_cols = module.excluded_cols
     selected_source_file_suffix_list = module.selected_source_file_suffix_list
-    get_id_column = module.get_id_column
-    get_tablename_from_file = module.get_tablename_from_file
+    excluded_raw_table_names = module.excluded_raw_table_names
+    get_tablename_from_raw_filename = module.get_tablename_from_raw_filename
+    get_rawrootid_from_raw_table_column = module.get_rawrootid_from_raw_table_column
     ###############################
 
     RawRootID = cohort_args['RawRootID']
@@ -76,8 +76,8 @@ def get_cohort_level_record_number_counts(cohort_name, cohort_label, cohort_args
             result = read_column_value_counts_by_chunk(RawRootID, 
                                                        chunk_size, 
                                                        file_path, 
-                                                       get_id_column, 
-                                                       get_tablename_from_file,
+                                                       get_rawrootid_from_raw_table_column, 
+                                                       get_tablename_from_raw_filename,
                                                        rawdf)
             logger.info(f"'{file_path}' # {result.shape}")
         
@@ -88,8 +88,8 @@ def get_cohort_level_record_number_counts(cohort_name, cohort_label, cohort_args
                 result = read_column_value_counts_by_chunk(RawRootID, 
                                                            chunk_size, 
                                                            file_path, 
-                                                           get_id_column, 
-                                                           get_tablename_from_file,
+                                                           get_rawrootid_from_raw_table_column, 
+                                                           get_tablename_from_raw_filename,
                                                            rawdf)
                 logger.info(f"'{file_path}' # {result.shape}")
             except Exception as e:
@@ -106,8 +106,8 @@ def get_cohort_level_record_number_counts(cohort_name, cohort_label, cohort_args
             result = read_column_value_counts_by_chunk(RawRootID, 
                                                        chunk_size, 
                                                        file_path, 
-                                                       get_id_column, 
-                                                       get_tablename_from_file,
+                                                       get_rawrootid_from_raw_table_column, 
+                                                       get_tablename_from_raw_filename,
                                                        rawdf)
             
             logger.info(f"'{file_path}' # {result.shape}")
@@ -120,7 +120,7 @@ def get_cohort_level_record_number_counts(cohort_name, cohort_label, cohort_args
     # Section: Filtering the df_Human who does not have any records. 
     recname_cols = [i for i in df_pivot.columns if i != RawRootID]
     # -- only consider the records that is in the included_cols. 
-    included_cols = [i for i in recname_cols if i not in excluded_cols]
+    included_cols = [i for i in recname_cols if i not in excluded_raw_table_names]
     rec_count = df_pivot[included_cols].sum(axis = 1)
     df_Human = df_pivot[rec_count > 0].reset_index(drop = True)
     df_Human['TotalRecNum'] = df_Human[included_cols].sum(axis = 1)
