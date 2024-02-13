@@ -11,28 +11,13 @@ import datasets
 from datasets import concatenate_datasets
 
 from .configfn import load_record_args, load_fldtkn_args
-from .loadtools import load_module_variables, add_key_return_dict
+from .loadtools import load_module_variables, add_key_return_dict, load_ds_rec_and_info
 from .obsname import parse_RecObsName, convert_RecObsName_and_CaseTkn_to_CaseObsName
 
 
 logging.basicConfig(level=logging.INFO, format='[%(levelname)s:%(asctime)s:(%(filename)s@%(lineno)d %(name)s)]: %(message)s')
 logger = logging.getLogger(__name__)
 
-
-def get_caseset_to_observe(group_id, CaseFolder, case_id_columns, cohort_args):
-    RootID = cohort_args['RootID']; ObsDT  = 'ObsDT'
-    group_name_list = [i for i in os.listdir(CaseFolder) if '.p' in i]
-    group_name_list = dict(sorted({int(i.split('_')[0]): i.replace('.p', '') for i in group_name_list}.items()))
-    if len(case_id_columns) == 0: case_id_columns = [RootID, ObsDT] 
-
-    if group_id in group_name_list:
-        group_name = group_name_list[group_id]
-        df_case = pd.read_pickle(os.path.join(CaseFolder, f'{group_name}.p'))[case_id_columns]
-        ds_case = datasets.Dataset.from_pandas(df_case)
-    else:
-        group_name = None 
-        ds_case = None
-    return group_name, ds_case
 
 
 def get_RecObsName_to_RecObsInfo(Record_Observations_List, 
@@ -78,13 +63,14 @@ def get_RecObsName_to_RecObsInfo(Record_Observations_List,
             df_rec_info = ds_rec_info.to_pandas().set_index(RootID)
         else:
             ################################################################################## to update
-            hfds_folder = cohort_args['hfds_folder']
-            ds_path = os.path.join(hfds_folder, RecName)
-            ds_rec = datasets.Dataset.load_from_disk(ds_path)
+            # hfds_folder = cohort_args['hfds_folder']
+            # ds_path = os.path.join(hfds_folder, RecName)
+            ds_rec, ds_rec_info = load_ds_rec_and_info(RecName, cohort_args)
+            # ds_rec = datasets.Dataset.load_from_disk(ds_path)
             column_names = ds_rec.column_names
             selected_columns = get_selected_columns(RecObs_Name, column_names, cohort_args, rec_args, CaseTkn)
             ds_rec = ds_rec.select_columns(selected_columns)
-            ds_rec_info = datasets.Dataset.load_from_disk(ds_path + '_info')
+            # ds_rec_info = datasets.Dataset.load_from_disk(ds_path + '_info')
             df_rec_info = ds_rec_info.to_pandas().set_index(RootID)
             # ds_rec, ds_rec_info = load_hfds_rec()
             ##################################################################################
@@ -398,7 +384,7 @@ class CaseObserverTransformer:
         # concatenate the datasets and save to the disk
         ds_caseobs_data = datasets.concatenate_datasets([v for _, v in Path_to_DS.items()])
         df_caseobs_info = ds_caseobs_data.select_columns(['caseobs_id']).to_pandas().reset_index().set_index('caseobs_id').rename(columns = {'index': 'caseobs_idx_in_data'})
-        
+        return ds_caseobs_data, df_caseobs_info
 
     def save_new_caseobs_to_ds_caseobs(self):
 
@@ -441,10 +427,11 @@ class CaseObserverTransformer:
 
         # ----------------------------------- TO UPDATE: the new version in case df_caseobs_not that big -----------------------------------
         # update the ds_caseobs_data into the disk
+        if len(Path_to_SmallDS) == 1: return None
+        ds_caseobs_data = concatenate_datasets([v for _, v in Path_to_SmallDS.items()])
         time.sleep(np.random.rand())
         time_finger = datetime.now().isoformat()[:-4].replace(':', '-') + str(round(np.random.rand()* 100, 0))
         new_path = os.path.join(self.CaseObsFolder_data, f'set-dt{time_finger}-sz{len(ds_caseobs_data)}')
-        ds_caseobs_data = concatenate_datasets([v for _, v in Path_to_SmallDS.items()])
         logger.info(f'save a group of small ds as a big ds to new_path: {new_path}')
         ds_caseobs_data.save_to_disk(new_path)
 
