@@ -5,24 +5,9 @@ import datasets
 from datasets import concatenate_datasets
 
 
-def map_case_to_case_IOTVT_type(x, out_ratio, test_ratio, valid_ratio):
-    if x['RandInOut'] < out_ratio:
-        InOut = 'out'
-    else:
-        InOut = 'in'    
-    adjusted_valid_ratio = valid_ratio / (1-test_ratio)
-    if x['CaseRltLoc'] > 1 - test_ratio:
-        TVT = 'test'
-    else:
-        if x['RandValidation'] < adjusted_valid_ratio:
-            TVT = 'valid'
-        else:
-            TVT = 'train'
-    InOutTVT = InOut + '_' + TVT    
-    return InOutTVT
 
-
-def generate_random_tags(df):
+def generate_random_tags(df, RANDOM_SEED):
+    np.random.seed(RANDOM_SEED)
     RootID, ObsDT = 'PID', 'ObsDT'
 
     # down sample 
@@ -34,18 +19,147 @@ def generate_random_tags(df):
     df = pd.merge(df, df_P)
 
     # test
-    df['CaseLoc'] = df.groupby(RootID).cumcount()
+    df['CaseLocInP'] = df.groupby(RootID).cumcount()
     df = pd.merge(df, df[RootID].value_counts().reset_index())
-    df['CaseRltLoc'] = df['CaseLoc'] /  df['count']
+    df['CaseRltLocInP'] = df['CaseLocInP'] /  df['count']
     # test other options
     df['RandTest'] = np.random.rand(len(df))
 
     # validation
     df['RandValidation'] = np.random.rand(len(df))
 
-    df = df.drop(columns = ['CaseLoc', 'count']).reset_index(drop = True)
+    df = df.drop(columns = ['CaseLocInP', 'count']).reset_index(drop = True)
     df = df.sort_values('RandDownSample').reset_index(drop = True)
     return df
+
+
+def map_case_to_IOTVT_split_type(x, 
+                                out_ratio, test_ratio, valid_ratio, 
+                                ):
+    if x['RandInOut'] < out_ratio:
+        InOut = 'out'
+    else:
+        InOut = 'in'    
+    # adjusted_valid_ratio = valid_ratio / (1-test_ratio)
+
+    if 'tail' in str(test_ratio):
+        TestSelector = 'CaseRltLocInP'
+        test_ratio = float(test_ratio.replace('tail', ''))
+        test_threshold = 1 - test_ratio
+    elif type(test_ratio) != float:
+        TestSelector = 'ObsDT'
+        test_threshold = pd.to_datetime(test_ratio)
+    else:
+        TestSelector = 'RandTest' 
+        # like converting 0.1 to 0.9
+        test_threshold = 1 - test_ratio
+
+    if 'tail' in str(valid_ratio):
+        ValidSelector = 'CaseRltLocInP'
+        valid_ratio = float(valid_ratio.replace('tail', ''))
+        valid_threshold = 1 - valid_ratio
+    elif type(valid_ratio) != float:
+        ValidSelector = 'ObsDT'
+        valid_threshold = pd.to_datetime(valid_ratio)
+    else:
+        ValidSelector = 'RandTest' 
+        valid_threshold = 1 - valid_ratio
+    
+    if x[TestSelector] > test_threshold:
+        TVT = 'test'
+    else:
+        if x[ValidSelector] > valid_threshold:
+            TVT = 'valid'
+        else:
+            TVT = 'train'
+    InOutTVT = InOut + '_' + TVT    
+    return InOutTVT
+
+
+# def map_case_to_case_IOTVT_type(x, out_ratio, test_ratio, valid_ratio):
+#     if x['RandInOut'] < out_ratio:
+#         InOut = 'out'
+#     else:
+#         InOut = 'in'    
+#     adjusted_valid_ratio = valid_ratio / (1-test_ratio)
+#     if x['CaseRltLoc'] > 1 - test_ratio:
+#         TVT = 'test'
+#     else:
+#         if x['RandValidation'] < adjusted_valid_ratio:
+#             TVT = 'valid'
+#         else:
+#             TVT = 'train'
+#     InOutTVT = InOut + '_' + TVT    
+#     return InOutTVT
+
+def get_caseset_to_observe(group_id, CaseFolder, case_id_columns, cohort_args):
+    RootID = cohort_args['RootID']; ObsDT  = 'ObsDT'
+    group_name_list = [i for i in os.listdir(CaseFolder) if '.p' in i]
+    group_name_list = dict(sorted({int(i.split('_')[0]): i.replace('.p', '') for i in group_name_list}.items()))
+
+    if group_id in group_name_list:
+        group_name = group_name_list[group_id]
+        df_case = pd.read_pickle(os.path.join(CaseFolder, f'{group_name}.p'))
+        
+        if len(case_id_columns) > 0: 
+            df_case = df_case[case_id_columns].reset_index(drop=True)
+
+        ds_case = datasets.Dataset.from_pandas(df_case)
+    else:
+        group_name = None 
+        ds_case = None
+    return group_name, ds_case
+
+
+def get_ds_case_dict_from_settings(caseset_name, 
+                                   splitset_name_list, 
+                                   subgroup_id_list, 
+                                   subgroup_filter_fn, 
+                                   cohort_args,
+                                   case_id_columns = []):
+    # caseset_name = args.caseset_name
+    # print(caseset_name)
+    # splitset_name_list = update_args_to_list(args.splitset_name_list)
+    # print(splitset_name_list)
+    SPACE = cohort_args['SPACE']
+    case_type_name_list = []
+    for splitset_name in splitset_name_list:
+        if 'rs' in splitset_name:
+            case_type_name_list.append(caseset_name + '-' + splitset_name)
+        else:
+            case_type_name_list.append(caseset_name)
+    
+    # case_type_name_list
+    # case_id_columns = update_args_to_list(args.case_id_columns) 
+
+    d = {}
+    for case_type in case_type_name_list:
+        # print('\n========================')
+        # print('case_type---->', case_type)
+
+        # L = []
+        for group_id in subgroup_id_list:
+            # print('group_id------->', group_id)
+            CaseFolder = os.path.join(SPACE['DATA_TASK'], 'CaseFolder', case_type)
+            # print(CaseFolder)
+            
+            if os.path.exists(CaseFolder) == False:
+                print(f'CaseFolder does not exist: {CaseFolder}')
+                print('TODO: ---- in the future, the Case Folder should be automatically created.')
+                continue
+
+            group_name, ds_case = get_caseset_to_observe(group_id, CaseFolder, case_id_columns, cohort_args)
+            d[f'{case_type}|{group_name}'] = ds_case
+
+    ds_case_dict = datasets.DatasetDict(d)
+    
+    if subgroup_filter_fn == 'None': 
+        ds_case_dict = ds_case_dict
+    else:
+        # TODO
+        ds_case_dict = ds_case_dict.filter(subgroup_filter_fn)
+        
+    return ds_case_dict
 
 
 def get_data_source_information(groupname_ids, 
