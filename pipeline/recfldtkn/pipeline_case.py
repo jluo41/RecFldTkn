@@ -274,7 +274,8 @@ def create_tokenizer(CaseTaskOpVocab, tokenizer_folder):
         tokenizer.pre_tokenizer = WhitespaceSplit()
 
         if not os.path.exists(tokenizer_folder):
-            os.makedirs(os.path.dirname(tokenizer_folder))
+            # os.makedirs(os.path.dirname(tokenizer_folder))
+            os.makedirs(tokenizer_folder)
 
         tokenizer_path = os.path.join(tokenizer_folder, sequence_name + '.json')
         if os.path.exists(tokenizer_path):
