@@ -157,8 +157,9 @@ def get_parent_record_information(record_args, cohort_args, df_Human, record_to_
             # ds_Prt = datasets.load_from_disk(parent_path)
             ds_Prt, _ = load_ds_rec_and_info(record_args['ParentRecName'], cohort_args)
         
-        ds_Prt = ds_Prt.select_columns(prt_record_args['RecIDChain'] + prt_record_args['RawRecID'])
-        df_Prt = ds_Prt.to_pandas()
+        columns = prt_record_args['RecIDChain']
+        columns = columns + [i for i in prt_record_args['RawRecID'] if i not in columns]
+        df_Prt = ds_Prt.select_columns(columns).to_pandas()
         
         # update df_Human
         df_Human = df_Human[df_Human[RootID].isin(df_Prt[RootID].to_list())].reset_index(drop = True)
