@@ -19,7 +19,6 @@ def load_cohort_args(recfldtkn_config_path, SPACE = None, use_inference = False)
         cohort_args['pypath'] = os.path.join(cohort_args['humanrec_pyfolder'], 'humanrec.py')
         for CohortName, CohortConfig in cohort_args['CohortInfo'].items():
             CohortConfig['FolderPath'] = CohortConfig['FolderPath'].replace('$DATA_RAW$', SPACE['DATA_RAW']) 
-            CohortConfig['cohort_name'] = CohortName 
 
     if use_inference:
         # CohortInfo = cohort_args['CohortInfo']
@@ -91,7 +90,7 @@ def load_record_args(RecName, cohort_args, use_inference = False, recfldtkn_conf
             new_path = os.path.join(SPACE['DATA_RAW'], 'inference', filename)
             Table_args['raw_data_path'] = new_path
             RecTables_args[RecTable] = Table_args
-        print('RecTables_args', RecTables_args)
+        # print('RecTables_args', RecTables_args)
         record_args['CohortInfo'][CohortName] = RecTables_args
 
     return record_args

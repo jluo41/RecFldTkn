@@ -9,6 +9,23 @@ import pandas as pd
 import datasets
 from functools import reduce
 
+import hashlib
+import base64
+
+def consistent_short_hash(input_data, length=10):
+    # Ensure the input is in string form
+    input_str = str(input_data)
+    # Hash the input using SHA-256
+    hash_object = hashlib.sha256(input_str.encode('utf-8'))
+    # Get the hash digest as bytes
+    hash_bytes = hash_object.digest()
+    # Encode the hash in base64 to shorten it
+    short_hash_base64 = base64.urlsafe_b64encode(hash_bytes).decode('utf-8')
+    # Truncate or slice the base64 hash to the desired length
+    short_hash = short_hash_base64[:length]
+    return short_hash
+
+
 def filter_with_cohort_label(df, cohort_label, cohort_args):
     RootID = cohort_args['RootID']
     filter_fn = lambda x: str(x)[:-cohort_args['RootIDLength']] == str(cohort_label)
