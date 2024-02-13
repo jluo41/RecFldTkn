@@ -6,6 +6,7 @@ import pandas as pd
 from pprint import pprint 
 from IPython.display import display, HTML
 import shutil
+import hashlib 
 
 # WorkSpace
 KEY = 'WorkSpace'; WORKSPACE_PATH = os.getcwd().split(KEY)[0] + KEY; print(WORKSPACE_PATH)
@@ -28,14 +29,11 @@ from datetime import datetime
 
 from recfldtkn.ckpd_obs import Ckpd_ObservationS
 from recfldtkn.configfn import load_cohort_args
-from recfldtkn.obsname import convert_RecObsName_and_CaseTkn_to_CaseObsName
-from recfldtkn.loadtools import load_module_variables, update_args_to_list
-from recfldtkn.observer import get_caseset_to_observe
-from recfldtkn.constaidatatools import convert_case_observations_to_co_to_observation
-from recfldtkn.constaidatatools import get_RecNameList_and_FldTknList
-from recfldtkn.constaidatatools import pipeline_to_generate_co_to_CaseObsInfo, get_complete_dataset
-from recfldtkn.constaidatatools import create_tokenizer
-from recfldtkn.constaidatatools import pipeline_for_ai_dataset_construction
+from recfldtkn.loadtools import update_args_to_list
+from recfldtkn.aidstools import get_caseset_to_observe
+from recfldtkn.pipeline_case import create_tokenizer
+from recfldtkn.pipeline_case import pipeline_case
+from recfldtkn.loadtools import consistent_short_hash
 
 from datasets import disable_caching
 from tokenizers.pre_tokenizers import WhitespaceSplit
@@ -131,11 +129,18 @@ if __name__ == '__main__':
 
     
     print(f'\n================ Gamma: Case Task Operation-{CaseTaskOp} ================')
-    results = pipeline_for_ai_dataset_construction(ds_case_dict, 
-                                                    case_observations, 
-                                                    CaseTaskOp,
-                                                    case_id_columns, 
-                                                    cohort_args, SPACE)
+    record_to_ds_rec = {}         # will load RFT from disk
+    record_to_ds_rec_info = {}    # will load RFT from disk
+    use_caseobs_from_disk = True  # will load CO from disk
+    results = pipeline_case(ds_case_dict,     # C
+                            case_observations,# CO 
+                            CaseTaskOp,       # Gamma
+                            case_id_columns,
+                            cohort_args, 
+                            record_to_ds_rec, 
+                            record_to_ds_rec_info,
+                            use_caseobs_from_disk,
+                            SPACE)
     CaseTaskOpVocab = results['CaseTaskOpVocab']
     ds_case_proc = results['ds_case_proc']
     
@@ -154,9 +159,16 @@ if __name__ == '__main__':
             print(df_filter.shape)
 
     if args.post_process == 'aidataset':
+
+        # hash_value = None 
+        # case_observations = sorted(case_observations)
+        CO_list_hash = consistent_short_hash(tuple(sorted(case_observations)))
+        print(CO_list_hash)
+        
         for case_split_type, ds_case in ds_case_proc.items():
             case_type, group_name = case_split_type.split('|')
-            path = os.path.join(SPACE['MODEL_TASK'], CaseTaskOp, 'AIDataset', case_type, group_name)
+            path = os.path.join(SPACE['MODEL_TASK'], CaseTaskOp + f'-CO_{CO_list_hash}', 'AIDataset', case_type, group_name)
+            print(path)
             if not os.path.exists(os.path.dirname(path)): os.makedirs(os.path.dirname(path))
             print('generate ai dataset to: ', path)
             print(ds_case)
@@ -164,7 +176,8 @@ if __name__ == '__main__':
             ds_case = datasets.load_from_disk(path) # adding this as a check.
         
         # check the tokenizer
-        tokenizer_folder = os.path.join(SPACE['MODEL_TASK'], CaseTaskOp)
+        tokenizer_folder = os.path.join(SPACE['MODEL_TASK'], CaseTaskOp +  f'-CO_{CO_list_hash}')
+        print(tokenizer_folder)
         tokenizer = create_tokenizer(CaseTaskOpVocab, tokenizer_folder)
 
     else:
