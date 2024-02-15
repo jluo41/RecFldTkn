@@ -17,7 +17,7 @@ sys.path.append(WORKSPACE_PATH)
 from proj_space import SPACE
 SPACE['WORKSPACE_PATH'] = WORKSPACE_PATH
 sys.path.append(SPACE['CODE_FN'])
-pprint(SPACE)
+# pprint(SPACE)
 
 
 # Available Packages
@@ -144,21 +144,22 @@ if __name__ == '__main__':
     CaseTaskOpVocab = results['CaseTaskOpVocab']
     ds_case_proc = results['ds_case_proc']
     
+    
     # step 5: post process
     if args.post_process == 'filter':
+
         for case_split_type, ds_case in ds_case_proc.items():
-            df = ds_case.select_columns(case_id_columns + ['tid']).to_pandas()
-            df_filter = df[df['tid'].apply(lambda x: x[0]) != 'None'][case_id_columns].reset_index(drop=True)
+            df = ds_case.select_columns(case_id_columns + ['inputs']).to_pandas()
+            df_filter = df[df['inputs'].apply(lambda x: x[0]) != 'None'][case_id_columns + ['inputs']].reset_index(drop=True)
             # print(case_split_type)
             case_type, group_name = case_split_type.split('|')
-            path = os.path.join(SPACE['DATA_TASK'], 'CaseFolder', CaseTaskOp.lower(), group_name + '.p')
+            path = os.path.join(SPACE['DATA_TASK'], 'CaseFolder', CaseTaskOp, group_name + '.p')
             if not os.path.exists(os.path.dirname(path)): os.makedirs(os.path.dirname(path))
             print(path)
             df_filter.to_pickle(path)
-            print(df_filter.head())
             print(df_filter.shape)
-
-    if args.post_process == 'aidataset':
+            
+    elif args.post_process == 'aidataset':
 
         # hash_value = None 
         # case_observations = sorted(case_observations)

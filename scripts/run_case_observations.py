@@ -27,8 +27,10 @@ from recfldtkn.ckpd_obs import Ckpd_ObservationS
 from recfldtkn.configfn import load_cohort_args
 from recfldtkn.obsname import convert_RecObsName_and_CaseTkn_to_CaseObsName
 from recfldtkn.loadtools import load_module_variables, update_args_to_list
-from recfldtkn.observer import get_caseset_to_observe, get_RecObsName_to_RecObsInfo, CaseObserverTransformer
-from recfldtkn.constaidatatools import pipeline_caseset_to_caseobservation
+from recfldtkn.observer import get_RecObsName_to_RecObsInfo, CaseObserverTransformer
+from recfldtkn.pipeline_case import pipeline_caseset_to_caseobservation
+from recfldtkn.aidstools import get_caseset_to_observe
+
 
 logger = logging.getLogger(__name__)
 recfldtkn_config_path = os.path.join(SPACE['CODE_RFT'], 'config_recfldtkn/')
@@ -105,7 +107,20 @@ if __name__ == '__main__':
     print('CaseTkn: ', CaseTkn) 
     print('CaseObsName: ', CaseObsName)
 
-    case_obs_result = pipeline_caseset_to_caseobservation(ds_case, Record_Observations_List, CaseTkn, SPACE, cohort_args, batch_size)
+    record_to_ds_rec = {}
+    record_to_ds_rec_info = {}
+    use_caseobs_from_disk = True
+    case_obs_result = pipeline_caseset_to_caseobservation(ds_case, Record_Observations_List, 
+                                                            CaseTkn, 
+                                                            SPACE, 
+                                                            cohort_args, 
+                                                            record_to_ds_rec, 
+                                                            record_to_ds_rec_info, 
+                                                            use_caseobs_from_disk,
+                                                            batch_size)
+        
+    
+    
     RecObsName_to_RecObsInfo, ds_caseobs, fn_caseobs_Phi, CaseTknVocab = case_obs_result
     
     print('\n======== have a look at RecObsName_to_RecObsInfo =========')
@@ -121,4 +136,5 @@ if __name__ == '__main__':
     print('\n======== have a look at the random case =========')
     random_int = random.randint(0, len(ds_caseobs))
     print(random_int, ds_caseobs[random_int])
+    print(CaseTknVocab)
     print('\n\n')
