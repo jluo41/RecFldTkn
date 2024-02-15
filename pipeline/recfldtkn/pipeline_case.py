@@ -155,7 +155,7 @@ def pipeline_to_generate_co_to_CaseObsInfo(ds_case,
         Record_Observations_List = CaseObsNameInfo['Record_Observations_List']
         CaseTkn = CaseObsNameInfo['CaseTkn']
         # print('\n\n=============\n')
-        print(Record_Observations_List, CaseTkn)
+        # print(Record_Observations_List, CaseTkn)
         RecObsName_to_RecObsInfo, ds_caseobs, fn_caseobs_Phi, CaseTknVocab = pipeline_caseset_to_caseobservation(ds_case, 
                                                                                                                  Record_Observations_List, 
                                                                                                                  CaseTkn, 
@@ -169,8 +169,10 @@ def pipeline_to_generate_co_to_CaseObsInfo(ds_case,
         if len(fn_caseobs_Phi.CaseTknVocab) > 0 and use_caseobs_from_disk == True: 
             CaseObsName = fn_caseobs_Phi.CaseObsName
             fn_caseobs_Phi.save_new_caseobs_to_ds_caseobs()
+            
             pd.DataFrame({CaseObsName: CaseTknVocab}).to_pickle(fn_caseobs_Phi.CaseObsFolder_vocab)
-        
+            
+            
         # print(ds_caseobs)
         # print(fn_caseobs_Phi)
         # print(CaseTknVocab)
@@ -181,6 +183,7 @@ def pipeline_to_generate_co_to_CaseObsInfo(ds_case,
         CaseObsInfo['vocab_caseobs'] = CaseTknVocab
         CaseObsInfo['RecObsName_to_RecObsInfo'] = RecObsName_to_RecObsInfo
         co_to_CaseObsInfo[co] = CaseObsInfo
+        
     return co_to_CaseObsInfo
 
 
@@ -240,12 +243,11 @@ def pipeline_case(ds_case_dict,     # C
     BATCHED, get_case_op_vocab, fn_Case_Operation_Tkn = fetch_casetaskop_Gamma_tools(CaseTaskOp, SPACE)
     CaseTaskOpVocab = get_case_op_vocab(co_to_CaseObsVocab)
     ds_case_proc = ds_caseobslist_dict.map(lambda examples: fn_Case_Operation_Tkn(examples, co_to_CaseObsVocab, CaseTaskOpVocab), 
-                                               batch_size=1000,
-                                               batched = BATCHED)
+                                           batch_size=1000, batched = BATCHED)
     
-    old_columns = list(ds_caseobslist_dict.column_names.values())[0]
-    ds_case_proc = ds_case_proc.remove_columns(old_columns)
-
+    if 'inputs' not in CaseTaskOpVocab:
+        old_columns = list(ds_caseobslist_dict.column_names.values())[0]
+        ds_case_proc = ds_case_proc.remove_columns(old_columns)
 
     results = {}
     results['co_to_CaseObsName'] = co_to_CaseObsName

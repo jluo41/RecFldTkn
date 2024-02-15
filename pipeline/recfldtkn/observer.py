@@ -252,8 +252,8 @@ class CaseObserverTransformer:
         # if the new caseobs are too many. 
         self.caseobs_ids = caseobs_ids
         self.use_caseobs_from_disk = use_caseobs_from_disk
-        # self.remove_relevant_caseobs_from_disk(self.CaseObsFolder_data, self.CaseObsFolder_info, self.caseobs_ids)
-        self.clean_and_update_ds_caseobs_data_from_disk(self.CaseObsFolder_data)
+        
+        # self.clean_and_update_ds_caseobs_data_from_disk(self.CaseObsFolder_data)
         self.ds_caseobs_data, self.df_caseobs_info = self.load_ds_caseobs_data_from_disk(self.CaseObsFolder_data, self.caseobs_ids)
         self.new_calculated_caseobs = {}  
         self.MAX_NEW_CASEOBS_CACHE_SIZE = 50000
@@ -440,7 +440,12 @@ class CaseObserverTransformer:
             if len(old_ds) >= 1000000: continue 
             del old_ds
             if os.path.exists(old_path):  # Check if the path exists
-                shutil.rmtree(old_path)   # This removes the directory and all its contents
+                try:
+                    shutil.rmtree(old_path)   # This removes the directory and all its contents
+                except:
+                    logger.warning(f"Fail to remove the path: {old_path}")
+                    time.sleep(3)
+                    shutil.rmtree(old_path)
             else:
                 logger.warning(f"The path {old_path} does not exist. might be deleted by other process.")
         
