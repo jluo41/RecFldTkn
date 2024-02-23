@@ -9,6 +9,7 @@ from typing import List
 from datasets import concatenate_datasets
 from datasets import DatasetDict
 import os
+import logging
 import datasets
 import numpy as np 
 from .configfn import load_record_args, load_fldtkn_args
@@ -20,6 +21,7 @@ from .loadtools import load_module_variables, update_args_to_list
 from .observer import get_RecObsName_to_RecObsInfo, CaseObserverTransformer
 from .obsname import parse_RecObsName
 
+logger = logging.getLogger(__name__)
 
 def fetch_caseobs_Phi_tools(CaseTkn, CaseObsName, SPACE):
     # step 4: prepare the \Phi's tools
@@ -156,6 +158,7 @@ def pipeline_to_generate_co_to_CaseObsInfo(ds_case,
         CaseTkn = CaseObsNameInfo['CaseTkn']
         # print('\n\n=============\n')
         # print(Record_Observations_List, CaseTkn)
+        logger.info(f'CaseObsNameInfo: {Record_Observations_List}, {CaseTkn}')
         RecObsName_to_RecObsInfo, ds_caseobs, fn_caseobs_Phi, CaseTknVocab = pipeline_caseset_to_caseobservation(ds_case, 
                                                                                                                  Record_Observations_List, 
                                                                                                                  CaseTkn, 
@@ -248,6 +251,7 @@ def pipeline_case(ds_case_dict,     # C
     if 'inputs' not in CaseTaskOpVocab:
         old_columns = list(ds_caseobslist_dict.column_names.values())[0]
         ds_case_proc = ds_case_proc.remove_columns(old_columns)
+
 
     results = {}
     results['co_to_CaseObsName'] = co_to_CaseObsName
