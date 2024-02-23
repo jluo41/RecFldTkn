@@ -485,34 +485,37 @@ def pipeline_record(record_to_recfldtkn_list,
         record_args['Name'] = RecordName
 
         # [0]. load from the disk or not
-        if load_from_disk == True and os.path.exists(data_folder):
+        if load_from_disk == True and os.path.exists(data_folder+'_data'):
             logger.info(f'Load from disk: {data_folder} ...')
             ds_rec = datasets.load_from_disk(data_folder + '_data')
             ds_rec_info = datasets.load_from_disk(data_folder + '_info')
-            record_to_record_args[RecordName] = record_args
-            record_to_ds_rec[RecordName] = ds_rec
-            record_to_ds_rec_info[RecordName] = ds_rec_info
-            continue 
             
-        # 1. for the record part 
-        # print(RecordName, '<------------ RecordName')
-        # print(record_to_ds_rec, '<--- record_to_ds_rec')
-        # print(filepath_to_rawdf, '<--- record_to_ds_rec')
-
-        ds_rec = pipeline_for_a_record_type(record_args, cohort_name, cohort_label, 
-                                            df_Human, cohort_args, record_to_ds_rec, filepath_to_rawdf)
-        
+            if reuse_old_rft == True:
+                record_to_record_args[RecordName] = record_args
+                record_to_ds_rec[RecordName] = ds_rec
+                record_to_ds_rec_info[RecordName] = ds_rec_info
+                continue
+            
+        else:
+            # 1. for the record part 
+            # print(RecordName, '<------------ RecordName')
+            # print(record_to_ds_rec, '<--- record_to_ds_rec')
+            # print(filepath_to_rawdf, '<--- record_to_ds_rec')
+            ds_rec = pipeline_for_a_record_type(record_args, cohort_name, cohort_label, 
+                                                df_Human, cohort_args, record_to_ds_rec, filepath_to_rawdf)
+            
         assert ds_rec is not None 
-
         if ds_rec is None: continue
 
         # 2. for the fldtkn part
         for fldtkn in recfldtkn_list:
+            # print(recfldtkn_list, '<---- recfldtkn_list')
             fldtkn_args = load_fldtkn_args(RecordName, fldtkn, cohort_args)
             fldtkn_args['Name'] = fldtkn
             logger.info(f'fldtkn: {fldtkn}')
             columns = [i for i in ds_rec.column_names if 'Tkn' in i]
-            if reuse_old_rft == True and fldtkn_args['Name']+'_tknidx' in columns: continue 
+            if reuse_old_rft == True and fldtkn_args['Name']+'_tknidx' in columns: 
+                continue 
             ds_rec = pipeline_for_adding_fldtkn_to_ds_rec(ds_rec, fldtkn_args)
 
         # 3. for the df_rec_info part. 
