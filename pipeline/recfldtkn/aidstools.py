@@ -46,7 +46,7 @@ def map_case_to_IOTVT_split_type(x,
         TestSelector = 'CaseRltLocInP'
         test_ratio = float(test_ratio.replace('tail', ''))
         test_threshold = 1 - test_ratio
-    elif type(test_ratio) != float:
+    elif type(test_ratio) != float and type(test_ratio) != int:
         TestSelector = 'ObsDT'
         test_threshold = pd.to_datetime(test_ratio)
     else:
@@ -58,7 +58,7 @@ def map_case_to_IOTVT_split_type(x,
         ValidSelector = 'CaseRltLocInP'
         valid_ratio = float(valid_ratio.replace('tail', ''))
         valid_threshold = 1 - valid_ratio
-    elif type(valid_ratio) != float:
+    elif type(valid_ratio) != float and type(valid_ratio) != int:
         ValidSelector = 'ObsDT'
         valid_threshold = pd.to_datetime(valid_ratio)
     else:
@@ -66,8 +66,10 @@ def map_case_to_IOTVT_split_type(x,
         valid_threshold = 1 - valid_ratio
     
     if x[TestSelector] > test_threshold:
+        # print('test_threshold', test_threshold)
         TVT = 'test'
     else:
+        # print('valid_threshold', valid_threshold)
         if x[ValidSelector] > valid_threshold:
             TVT = 'valid'
         else:
@@ -75,22 +77,6 @@ def map_case_to_IOTVT_split_type(x,
     InOutTVT = InOut + '_' + TVT    
     return InOutTVT
 
-
-# def map_case_to_case_IOTVT_type(x, out_ratio, test_ratio, valid_ratio):
-#     if x['RandInOut'] < out_ratio:
-#         InOut = 'out'
-#     else:
-#         InOut = 'in'    
-#     adjusted_valid_ratio = valid_ratio / (1-test_ratio)
-#     if x['CaseRltLoc'] > 1 - test_ratio:
-#         TVT = 'test'
-#     else:
-#         if x['RandValidation'] < adjusted_valid_ratio:
-#             TVT = 'valid'
-#         else:
-#             TVT = 'train'
-#     InOutTVT = InOut + '_' + TVT    
-#     return InOutTVT
 
 def get_caseset_to_observe(group_id, CaseFolder, case_id_columns, cohort_args):
     RootID = cohort_args['RootID']; ObsDT  = 'ObsDT'
