@@ -29,6 +29,15 @@ Ckpd_ObservationS = {
         'DistEndToPredDT': - 0.000001,
         'TimeUnit': 'D',
         'StartIdx5Min': -288 * 365,
+        'EndIdx5Min': -1
+    },
+    
+    'Bf1YIn': {
+        'CkpdName': 'Bf1Y',
+        'DistStartToPredDT': -365 * 1,
+        'DistEndToPredDT': 0.000001,
+        'TimeUnit': 'D',
+        'StartIdx5Min': -288 * 365,
         'EndIdx5Min': 1
     },
     'Bf10Y': {
