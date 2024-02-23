@@ -65,7 +65,11 @@ def get_RecObsName_to_RecObsInfo(Record_Observations_List,
             ################################################################################## to update
             # hfds_folder = cohort_args['hfds_folder']
             # ds_path = os.path.join(hfds_folder, RecName)
-            ds_rec, ds_rec_info = load_ds_rec_and_info(RecName, cohort_args)
+            try:
+                ds_rec, ds_rec_info = load_ds_rec_and_info(RecName, cohort_args)
+            except Exception as e:
+                logger.info(f'Error in loading the dataset: {RecName} with error {e}')
+                raise ValueError(f'Error in loading the dataset: {RecName}')
             # ds_rec = datasets.Dataset.load_from_disk(ds_path)
             column_names = ds_rec.column_names
             selected_columns = get_selected_columns(RecObs_Name, column_names, cohort_args, rec_args, CaseTkn)
