@@ -1,7 +1,26 @@
-import yaml
 import os
+import json
+import yaml
+import logging
 import pandas as pd
 from .ckpd_obs import Ckpd_ObservationS
+
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO, format='[%(levelname)s:%(asctime)s:(%(filename)s@%(lineno)d %(name)s)]: %(message)s')
+
+
+def get_rec_related_size(RecName, cohort_args):
+    size = cohort_args['RecName_to_RFT_GROUP_SIZE']['Default']
+    RFT_GROUP_SIZE = cohort_args['RecName_to_RFT_GROUP_SIZE'].get(RecName, size)
+    
+    size = cohort_args['RecName_to_RFT_idx_group_size']['Default']
+    idx_group_size = cohort_args['RecName_to_RFT_idx_group_size'].get(RecName, size)
+    
+    usebucket = cohort_args['RecName_to_RFT_usebucket']['Default']
+    usebucket = cohort_args['RecName_to_RFT_usebucket'].get(RecName, usebucket)
+
+    return RFT_GROUP_SIZE, idx_group_size, usebucket
+
 
 def load_cohort_args(recfldtkn_config_path, SPACE = None, use_inference = False):
     file_path = os.path.join(recfldtkn_config_path, 'Cohort.yaml')
@@ -16,6 +35,9 @@ def load_cohort_args(recfldtkn_config_path, SPACE = None, use_inference = False)
         cohort_args['recattr_pyfolder'] = cohort_args['recattr_pyfolder'].replace('$CODE_FN$', SPACE['CODE_FN']) 
         cohort_args['fldtkn_pyfolder'] = cohort_args['fldtkn_pyfolder'].replace('$CODE_FN$', SPACE['CODE_FN']) 
         cohort_args['humanrec_pyfolder'] = cohort_args['humanrec_pyfolder'].replace('$CODE_FN$', SPACE['CODE_FN']) 
+        cohort_args['inference_pyfolder'] = cohort_args['inference_pyfolder'].replace('$CODE_FN$', SPACE['CODE_FN']) 
+        cohort_args['trigger_pyfolder'] = cohort_args['trigger_pyfolder'].replace('$CODE_FN$', SPACE['CODE_FN']) 
+        
         cohort_args['pypath'] = os.path.join(cohort_args['humanrec_pyfolder'], 'humanrec.py')
         for CohortName, CohortConfig in cohort_args['CohortInfo'].items():
             CohortConfig['FolderPath'] = CohortConfig['FolderPath'].replace('$DATA_RAW$', SPACE['DATA_RAW']) 
@@ -35,20 +57,6 @@ def load_cohort_args(recfldtkn_config_path, SPACE = None, use_inference = False)
 
     cohort_args['Ckpd_ObservationS'] = Ckpd_ObservationS
     return cohort_args
-
-    
-def get_rec_related_size(RecName, cohort_args):
-    size = cohort_args['RecName_to_RFT_GROUP_SIZE']['Default']
-    RFT_GROUP_SIZE = cohort_args['RecName_to_RFT_GROUP_SIZE'].get(RecName, size)
-    
-    size = cohort_args['RecName_to_RFT_idx_group_size']['Default']
-    idx_group_size = cohort_args['RecName_to_RFT_idx_group_size'].get(RecName, size)
-    
-    usebucket = cohort_args['RecName_to_RFT_usebucket']['Default']
-    usebucket = cohort_args['RecName_to_RFT_usebucket'].get(RecName, usebucket)
-
-    return RFT_GROUP_SIZE, idx_group_size, usebucket
-
 
 def load_record_args(RecName, cohort_args, use_inference = False, recfldtkn_config_path = None):
     SPACE = cohort_args['SPACE']
@@ -99,6 +107,7 @@ def load_record_args(RecName, cohort_args, use_inference = False, recfldtkn_conf
 def load_fldtkn_args(RecName, FldTknName, cohort_args, recfldtkn_config_path = None):
     recfldtkn_config_path = cohort_args['recfldtkn_config_path']
     file_path = os.path.join(recfldtkn_config_path, 'Record', f'{RecName}.yaml')
+    logger.info(f'file_path in load_fldtkn_args: {file_path}')
     assert os.path.exists(file_path)
     # with open(file_path, 'r') as file: record_args = yaml.safe_load(file)
     record_args = load_record_args(RecName, cohort_args, recfldtkn_config_path)
@@ -109,7 +118,7 @@ def load_fldtkn_args(RecName, FldTknName, cohort_args, recfldtkn_config_path = N
     fldtkn_args['FldTknName'] = FldTknName
 
     if 'external_source_path' in fldtkn_args:
-        fldtkn_args['external_source_path'] = fldtkn_args['external_source_path'].replace('$DATA_RAW$', cohort_args['SPACE']['DATA_RAW'])
+        fldtkn_args['external_source_path'] = fldtkn_args['external_source_path'].replace('$DATA_EXTERNAL$', cohort_args['SPACE']['DATA_EXTERNAL'])
         fldtkn_args['external_source'] = pd.read_pickle(fldtkn_args['external_source_path'])    
 
     RFT_GROUP_SIZE, idx_group_size, usebucket = get_rec_related_size(RecName, cohort_args)
@@ -126,3 +135,55 @@ def load_fldtkn_args(RecName, FldTknName, cohort_args, recfldtkn_config_path = N
     return fldtkn_args
 
 
+def load_rft_config(recfldtkn_config_path, 
+                    RecName_list = None, 
+                    FldTknName_list = None,
+                    SPACE = None, 
+                    use_inference = False):
+    rft_config = {}
+    
+    # base yaml
+    base_config = load_cohort_args(recfldtkn_config_path, SPACE, use_inference)
+    rft_config['base_config'] = base_config
+
+    # record yaml
+    rft_config['rec_configs'] = {}
+    
+    # -- generate the RecName_list
+    if RecName_list is None:
+        RecName_list = os.listdir(os.path.join(recfldtkn_config_path, 'Record'))
+    
+    # -- check and get the record yaml and py
+    for RecName in RecName_list:
+        rec_yaml_path = os.path.join(recfldtkn_config_path, 'Record', f'{RecName}.yaml')
+        if not os.path.exists(rec_yaml_path): 
+            logger.warning(f'[YAML] {rec_yaml_path} does not exist'); continue
+        rec_config = load_record_args(RecName, base_config, use_inference, recfldtkn_config_path)
+        
+        pypath = rec_config['pypath']
+        # print(pypath)
+        if not os.path.exists(pypath): 
+            logger.warning(f'[PY] {pypath} does not exist'); continue
+        rft_config['rec_configs'][RecName] = rec_config
+
+    # fldtkn yaml
+    rft_config['fldtkn_configs'] = {}
+
+    # -- generate the FldTknName_list
+    if FldTknName_list is None:
+        FldTknName_list = []
+        for RecName in RecName_list:
+            rec_config = rft_config['rec_configs'][RecName]
+            FldTknName_list += rec_config.get('FldTknInfo', {}).keys()
+    
+    # -- check and get the fldtkn yaml and py
+    for fldtkn in FldTknName_list:
+        RecName = fldtkn.split('-')[0]
+        fldtkn_config = load_fldtkn_args(RecName, fldtkn, base_config, recfldtkn_config_path)
+        pypath = fldtkn_config['pypath']
+        # print(RecName)
+        # print(pypath)
+        if not os.path.exists(pypath): 
+            logger.warning(f'[PY] {pypath} does not exist'); continue
+        rft_config['fldtkn_configs'][fldtkn] = fldtkn_config
+    return rft_config

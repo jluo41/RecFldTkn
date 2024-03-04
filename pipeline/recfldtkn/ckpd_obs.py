@@ -31,7 +31,6 @@ Ckpd_ObservationS = {
         'StartIdx5Min': -288 * 365,
         'EndIdx5Min': -1
     },
-    
     'Bf1YIn': {
         'CkpdName': 'Bf1Y',
         'DistStartToPredDT': -365 * 1,

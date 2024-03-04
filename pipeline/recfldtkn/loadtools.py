@@ -6,24 +6,122 @@ import importlib
 import yaml
 import numpy as np
 import pandas as pd
+import logging
 import datasets
 from functools import reduce
 
-import hashlib
-import base64
+logger = logging.getLogger(__name__)
 
-def consistent_short_hash(input_data, length=10):
-    # Ensure the input is in string form
-    input_str = str(input_data)
-    # Hash the input using SHA-256
-    hash_object = hashlib.sha256(input_str.encode('utf-8'))
-    # Get the hash digest as bytes
-    hash_bytes = hash_object.digest()
-    # Encode the hash in base64 to shorten it
-    short_hash_base64 = base64.urlsafe_b64encode(hash_bytes).decode('utf-8')
-    # Truncate or slice the base64 hash to the desired length
-    short_hash = short_hash_base64[:length]
-    return short_hash
+def fetch_trigger_tools(TriggerCaseMethod, SPACE):
+    pypath = os.path.join(SPACE['CODE_FN'], 'fn_trigger', f'{TriggerCaseMethod}.py')
+    module = load_module_variables(pypath)
+    TriggerRecName = module.TriggerRecName
+    case_id_columns = module.case_id_columns
+    special_columns = module.special_columns
+    convert_TriggerEvent_to_Caseset = module.convert_TriggerEvent_to_Caseset
+    tools = {}
+    tools['TriggerRecName'] = TriggerRecName
+    tools['case_id_columns'] = case_id_columns
+    tools['special_columns'] = special_columns
+    tools['convert_TriggerEvent_to_Caseset'] = convert_TriggerEvent_to_Caseset
+    return tools
+
+def fetch_casetag_tools(TagMethod, SPACE):
+    pypath = os.path.join(SPACE['CODE_FN'], 'fn_learning', f'{TagMethod}.py')
+    module = load_module_variables(pypath)
+    InfoRecName = module.InfoRecName
+    subgroup_columns = module.subgroup_columns
+    fn_case_tagging = module.fn_case_tagging
+    tools = {}
+    tools['InfoRecName'] = InfoRecName
+    tools['subgroup_columns'] = subgroup_columns
+    tools['fn_case_tagging'] = fn_case_tagging
+    return tools
+
+def fetch_casefilter_tools(FilterMethod, SPACE):
+    pypath = os.path.join(SPACE['CODE_FN'], 'fn_learning', f'{FilterMethod}.py')
+    module = load_module_variables(pypath)
+    fn_case_filtering = module.fn_case_filtering
+    tools = {}
+    tools['fn_case_filtering'] = fn_case_filtering
+    return tools
+
+def fetch_entry_tools(entry_args, SPACE):
+    tools = {}
+    for entry_name, entry_method in entry_args.items():
+        pypath = os.path.join(SPACE['CODE_FN'], 'fn_learning', f'{entry_method}.py')
+        module = load_module_variables(pypath)
+        # print([i for i in module.MetaDict])
+        tools[entry_name] = module.MetaDict['fn_' + entry_name]
+    return tools
+
+def fetch_fldtkn_phi_tools(RecFldTkn, fldtkn_args, SPACE):
+
+    RecFldTkn = RecFldTkn.replace('-', '_')
+    pypath = os.path.join(SPACE['CODE_FN'], 'fn_fldtkn', f'{RecFldTkn}.py')
+    module = load_module_variables(pypath)
+    
+    column_to_top_values = module.column_to_top_values
+    item_to_configs = module.item_to_configs
+    idx2tkn = module.idx2tkn
+    tokenizer_fn = module.tokenizer_fn
+    fldtkn_args['item_to_configs'] = item_to_configs
+    fldtkn_args['column_to_top_values'] = column_to_top_values
+    
+    tools = {}
+    tools['column_to_top_values'] = column_to_top_values
+    tools['item_to_configs'] = item_to_configs
+    tools['idx2tkn'] = idx2tkn
+    tools['tokenizer_fn'] = tokenizer_fn
+    tools['fldtkn_args'] = fldtkn_args  
+    return tools
+
+
+def fetch_caseobs_Phi_tools(name_CasePhi, CaseObsName, SPACE):
+    
+    pypath = os.path.join(SPACE['CODE_FN'], 'fn_casephi', f'phi_{name_CasePhi}.py')
+    module = load_module_variables(pypath)
+    get_CO_id = module.get_CO_id
+    get_selected_columns = module.get_selected_columns
+    get_CO_vocab = module.get_CO_vocab
+    fn_CasePhi = module.fn_CasePhi
+    CO_Folder = os.path.join(SPACE['DATA_CaseObs'], CaseObsName)
+
+    tools = {}
+    tools['get_CO_id'] = get_CO_id
+    tools['get_selected_columns'] = get_selected_columns
+    tools['get_CO_vocab'] = get_CO_vocab
+    tools['fn_CasePhi'] = fn_CasePhi
+    tools['CO_Folder'] = CO_Folder
+    
+    return tools 
+
+def fetch_casefeat_Gamma_tools(CaseTaskOp, CaseFeatName, SPACE):
+
+    pypath = os.path.join(SPACE['CODE_FN'], 'fn_casegamma',  f'gamma_{CaseTaskOp}.py')
+    module = load_module_variables(pypath)
+    get_CF_id = module.get_CF_id
+    get_CF_vocab = module.get_CF_vocab
+    fn_CaseGamma = module.fn_CaseGamma
+    CF_Folder = os.path.join(SPACE['DATA_CaseFeat'], CaseFeatName)
+
+    tools = {}
+    tools['get_CF_id'] = get_CF_id
+    tools['get_CF_vocab'] = get_CF_vocab
+    tools['fn_CaseGamma'] = fn_CaseGamma
+    tools['CF_Folder'] = CF_Folder
+    return tools
+
+def fetch_TriggerEvent_tools(TriggerCaseMethod, SPACE):
+    pypath = os.path.join(SPACE['CODE_FN'], 'fn_trigger', f'{TriggerCaseMethod}.py')
+    
+    module = load_module_variables(pypath)
+    tools = {}
+    tools['TriggerRecName'] = module.TriggerRecName
+    tools['case_id_columns'] = module.case_id_columns
+    tools['special_columns'] = module.special_columns
+    tools['convert_TriggerEvent_to_Caseset'] = module.convert_TriggerEvent_to_Caseset
+    return tools
 
 
 def filter_with_cohort_label(df, cohort_label, cohort_args):
@@ -44,6 +142,9 @@ def load_ds_rec_and_info(record_name, cohort_args, cohort_label_list = None):
     for cohort_full_name in cohort_list:
         data_folder = os.path.join(SPACE['DATA_RFT'], cohort_full_name, record_name + '_data')
         # logger.info(f'Load from disk: {data_folder} ...')
+        if not os.path.exists(data_folder):
+            logger.info(f'No such folder: {data_folder} ...')
+            continue
         ds_rec = datasets.Dataset.load_from_disk(data_folder)
         l.append(ds_rec)
         info_folder = os.path.join(SPACE['DATA_RFT'], cohort_full_name, record_name + '_info')
@@ -132,6 +233,23 @@ def add_key_return_dict(dictionary, key, value):
     dictionary = dictionary.copy()
     dictionary[key] = value
     return dictionary
+
+def find_timelist_index(dates, DT):
+    low, high = 0, len(dates) - 1
+    if DT < dates[0]:
+        # return -1  # DT is smaller than the first date in the list
+        return 0     # DT is smaller than the first date in the list
+    if DT > dates[-1]:
+        # return len(dates)  # DT is larger or equal to the last date in the list
+        return len(dates)    # DT is larger or equal to the last date in the list
+
+    while low <= high:
+        mid = (low + high) // 2
+        if dates[mid] < DT:
+            low = mid + 1
+        else:
+            high = mid - 1
+    return low
 
 # ========================================== deprecate ==========================================
 
