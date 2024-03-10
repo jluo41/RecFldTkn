@@ -1,0 +1,41 @@
+
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%  the folders where to save the data
+CohortInfo:
+  COHORT_NAME_XXXXXX: # <---- change this.
+    cohort_label: 1
+    FolderPath: $DATA_RAW$/COHORT_NAME_XXXXXX
+
+
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%  where to get the raw Human data.
+RawRootID: 'XXXXXXXXX'      # <--- HumanID in Raw Data. 
+RootID:  'XXXXXXXXX'        # <--- HumanID in RFT Data. 
+
+# --------------- in most of time, do not need to change the following part ---------------
+# Relative to WorkSpace
+recattr_pyfolder: '$CODE_FN$/fn_recattr/'
+fldtkn_pyfolder: '$CODE_FN$/fn_fldtkn/'
+humanrec_pyfolder: '$CODE_FN$/fn_humanrec/'
+
+# %%%%%%%%%%%%%%%% RFT Part Bucket Size %%%%%%%%%%%%%%%%%
+RecName: PRawRecNum # <---- df_Human Name # PRawRecNum
+
+RecName_to_RFT_GROUP_SIZE: # RecName to RFT's Bucket Size. 
+    Default: 5000
+
+# %%%%%%%%%%%%%%%% RFT Part idx_group_size %%%%%%%%%%%%%%%%%
+# in the development, for a RecName. only for development purpose.
+# we have: df_Human --> df_HumanSelected (human who has Rec) --> df_HumanGroup (take a small group to test)
+# idx_group_size: is the size of df_HumanGroup. 
+RecName_to_RFT_idx_group_size: # RecName to RFT's Bucket Size. 
+    Default: 10000
+
+# %%%%%%%%%%%%%%%% RFT Part Use Bucket %%%%%%%%%%%%%%%%%
+# in the development, for a RecFld, when doing the development
+# usebucket: True  means we only want to one bucket to do test
+# usebucket: False means we load all the buckets to do test.
+RecName_to_RFT_usebucket: # RecName to RFT's Bucket Size. 
+    Default: False
+
+
+# %%%%%%%%%%%%%%%% Don't change this %%%%%%%%%%%%%%%%%
+RootIDLength: 6 # <--- PID length. if it is 5, PID is of 5 digits.
