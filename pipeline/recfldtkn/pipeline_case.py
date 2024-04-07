@@ -12,8 +12,8 @@ from tokenizers.pre_tokenizers import WhitespaceSplit
 
 from .obsname import convert_case_observations_to_co_to_observation, get_RecNameList_and_FldTknList
 from .observer import get_RecObsName_to_RecObsInfo, CaseObserverTransformer
-from .pipeline_model import get_Trigger_Cases, convert_TriggerCases_to_LearningCases
-from .pipeline_model import assign_caseSplitTag_to_dsCaseLearning
+# from .pipeline_model import get_Trigger_Cases, convert_TriggerCases_to_LearningCases
+# from .pipeline_model import assign_caseSplitTag_to_dsCase
 from .loadtools import fetch_trigger_tools 
 from .observer import get_fn_case_GammaFullInfo
 from .loadtools import fetch_entry_tools, load_module_variables
@@ -30,6 +30,69 @@ def get_dfset_from_SetName(df_dsmp, SetName, case_id_columns, SubGroupFilterMeth
     if SubGroup.lower() != 'all':
         pass
     return df_set
+
+
+def generate_casefeat_to_datasetdict(Gamma_Configs, 
+                                     ds_case_dict,
+                                     df_case_all, 
+                                     base_config, 
+                                     RecName_to_dsRec, 
+                                     RecName_to_dsRecInfo, 
+                                     use_CF_from_disk, 
+                                     use_CO_from_disk,
+                                     use_inference):
+    CFType_to_CaseFeatInfo = {}
+    for CFType, Gamma_Config in Gamma_Configs.items():
+        # this need to pay attention
+        if use_inference == True and 'output' in CFType.lower(): continue 
+        
+        logger.info(f'============ CFType: {CFType} =============')
+        # df_case = datasets.concatenate_datasets([ds_case_dict[split] for split in ds_case_dict])
+        CaseFeatInfo = get_fn_case_GammaFullInfo(Gamma_Config, 
+                                                base_config, 
+                                                RecName_to_dsRec, 
+                                                RecName_to_dsRecInfo, 
+                                                df_case_all,
+                                                use_CF_from_disk,
+                                                use_CO_from_disk)
+        CFType_to_CaseFeatInfo[CFType] = CaseFeatInfo
+        FnCaseFeatGamma = CaseFeatInfo['FnCaseFeatGamma']
+        batch_size = CaseFeatInfo.get('batch_size', 10)
+        CaseFeatName = CaseFeatInfo['CaseFeatName']
+        for splitname, ds_caseset in ds_case_dict.items():
+            logger.info(f'----- splitname: {splitname} -----')
+            ds_caseset = ds_caseset.map(FnCaseFeatGamma, 
+                                        batched = True, 
+                                        batch_size= batch_size, 
+                                        load_from_cache_file = False, 
+                                        new_fingerprint = CaseFeatName + splitname.replace(':', '_'))
+            ds_case_dict[splitname] = ds_caseset
+            # logger.info(ds_caseset)
+        ######## save to cache file #########
+        if len(FnCaseFeatGamma.new_CFs) > 0 and use_CF_from_disk == True:
+            logger.info(f'----- Save CF {CaseFeatName}: to Cache File -----')
+            FnCaseFeatGamma.save_new_CFs_to_disk()
+        
+        for COName, FnCaseObsPhi in FnCaseFeatGamma.COName_to_FnCaseObsPhi.items():
+            if len(FnCaseObsPhi.new_COs) > 0 and use_CO_from_disk == True:
+                logger.info(f'----- Save CO {COName}: to Cache File -----')
+                FnCaseObsPhi.save_new_COs_to_disk()
+    return ds_case_dict, CaseFeatInfo
+
+def create_tokenizer_from_CF_vocab(CF_vocab):
+    tokenizer_dict = {}
+    for SeqType in CF_vocab:
+
+        tid2tkn = {int(tid): tkn for tid, tkn in CF_vocab[SeqType]['tid2tkn'].items()}
+        tkn2tid = {v: k for k, v in tid2tkn.items()}
+        unk_token = tid2tkn[0]
+        if 'unk' not in unk_token:
+            print(f'Warning: unk_token: {unk_token} is not unk')
+
+        tokenizer = tokenizers.Tokenizer(tokenizers.models.WordLevel(vocab = tkn2tid, unk_token=unk_token))
+        tokenizer.pre_tokenizer = WhitespaceSplit()
+        tokenizer_dict[SeqType] = tokenizer
+    return tokenizer_dict
 
 
 def pipeline_from_dsRec_to_dsCase(data_args, 

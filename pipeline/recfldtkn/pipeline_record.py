@@ -26,7 +26,9 @@ def get_RawName_to_dfRawPath(OneCohort_config, rft_config):
     FolderPath = OneCohort_config['FolderPath']
     assert os.path.exists(FolderPath)
 
-    file_list = [i for i in os.listdir(FolderPath) if i.split('.')[-1] in selected_source_file_suffix_list]
+    # file_list = [i for i in os.listdir(FolderPath) if i.split('.')[-1] in selected_source_file_suffix_list]
+    file_list = [i for i in os.listdir(FolderPath) if any([sfx in i for sfx in selected_source_file_suffix_list])]
+        
     fullfile_list = [os.path.join(FolderPath, i) for i in file_list]
     logger.info(f'{FolderPath} <-- FolderPath')
     logger.info(f'{len(fullfile_list)} <--- fullfile_list')
@@ -52,7 +54,12 @@ def read_column_value_counts_by_chunk(RawRootID,
         columns = dfRaw.columns 
     
     id_column = get_rawrootid_from_raw_table_column(columns)
+    logger.info(f'id_column: {id_column}')
 
+    if id_column is None:
+        results = pd.DataFrame(columns = [RawRootID, 'RawName', 'RecNum'])
+        return results 
+    
     if type(dfRaw) == pd.DataFrame:
         result = dfRaw[id_column].value_counts()
     else:
@@ -116,6 +123,11 @@ def get_CohortLevel_df_Human2RawRecNum(OneCohort_config,
                 else:
                     dfRaw = None
                     logger.info(f"'{file_path}' # larger than 1GB")
+
+            elif '.csv.gz' in file_path:
+                dfRaw = None
+                logger.info(f"'{file_path}' # use csv.gz file")
+
             elif file_path.split('.')[-1] == 'parquet':
                 dfRaw = pd.read_parquet(file_path)
             elif file_path.split('.')[-1] == 'p':
@@ -131,7 +143,8 @@ def get_CohortLevel_df_Human2RawRecNum(OneCohort_config,
             raise ValueError(f'file type not supported: {type(info)}')
 
         # pass if the dfRaw is empty
-        if len(dfRaw) == 0: continue 
+        if type(dfRaw) == pd.DataFrame:
+            if len(dfRaw) == 0: continue 
 
         # have a double check for the large file.
         if is_larger_than_1GB is True:
@@ -175,11 +188,10 @@ def get_CohortLevel_df_Human2RawRecNum(OneCohort_config,
 
 def get_parentRecord_info(rec_config, rft_config, df_Human, RecName_to_dsRec = {}):
 
-    base_config = rft_config['base_config'] 
+    base_config = rft_config['base_config']
 
     RootID = base_config['RootID']
     RawRootID = base_config['RawRootID']
-
 
     if rec_config['ParentRecName'] is not None:
         # get the parent record information
@@ -189,15 +201,16 @@ def get_parentRecord_info(rec_config, rft_config, df_Human, RecName_to_dsRec = {
             ds_Prt = RecName_to_dsRec[rec_config['ParentRecName']]
         else:
             ds_Prt, _ = load_ds_rec_and_info(rec_config['ParentRecName'], base_config)
-        
+
         columns = prt_record_args['RecIDChain']
         columns = columns + [i for i in prt_record_args['RawRecID'] if i not in columns]
         df_Prt = ds_Prt.select_columns(columns).to_pandas()
-        
+
         # update df_Human
         df_Human = df_Human[df_Human[RootID].isin(df_Prt[RootID].to_list())].reset_index(drop = True)
-        
-    else: 
+
+    else:
+        # print(' no parent record')
         # get the parent record information
         prt_record_args = {}
         prt_record_args['RawRecID'] = base_config['RawRootID']
@@ -210,7 +223,6 @@ def get_parentRecord_info(rec_config, rft_config, df_Human, RecName_to_dsRec = {
         'df_Human': df_Human
     }
     return parent_results
-
 
 def get_df_HumanSelected_from_OneCohortRecArgs(rec_config, 
                                                RawName_to_RawConfig, 
@@ -268,11 +280,12 @@ def get_HumanRawRec_for_HumanGroup(df_HumanGroup, RawName_to_RawConfig, RawName_
     L = []
     for RawName, RawConfig in RawName_to_RawConfig.items():
         RawName = RawConfig['RawName']
-        RawRootID = RawConfig['RawRootID']
         raw_columns = RawConfig['raw_columns']
         chunk_size = RawConfig.get('chunk_size', 100000)
 
-        RawRootID_to_RawNameRecNum = dict(zip(df_HumanGroup[RawRootID], df_HumanGroup[RawName]))
+        # print(RawName, RawConfig)
+        # print(df_HumanGroup.head())
+        RawRootID_to_RawNameRecNum = dict(zip(df_HumanGroup[base_config['RawRootID']], df_HumanGroup[RawName]))
         
         InfoRaw = RawName_to_dfRaw[RawName]
         if type(InfoRaw) == str:
@@ -288,7 +301,7 @@ def get_HumanRawRec_for_HumanGroup(df_HumanGroup, RawName_to_RawConfig, RawName_
 
         df_HumanRawRec_of_RawTable = load_HumanRawTable(RawRootID_to_RawNameRecNum, 
                                                         RawName, 
-                                                        RawRootID, 
+                                                        RawConfig['RawRootID'], 
                                                         raw_data_path, 
                                                         df_rawrec,
                                                         raw_columns, 
@@ -301,8 +314,39 @@ def get_HumanRawRec_for_HumanGroup(df_HumanGroup, RawName_to_RawConfig, RawName_
             logger.info(f'RawRootID is different from "Base" and "RecName": {rawname_RawRootID} != {base_RawRootID}')
         df = df_HumanRawRec_of_RawTable.rename(columns = {RawConfig['RawRootID']: base_config['RawRootID']})
         L.append(df)
-    df_HumanRawRec = reduce(lambda left, right: pd.merge(left, right, on=RawRootID, how='outer'), L)
+    df_HumanRawRec = reduce(lambda left, right: pd.merge(left, right, on=base_config['RawRootID'], how='outer'), L)
     return df_HumanRawRec
+
+
+def post_record_process(df, record_args):
+    # ---------------------------
+    # x. merge with the parent record (a must except Human Records)
+    # print(df.shape)
+    df_Prt = record_args['df_Prt']
+    # print(df_Prt.shape)
+    prt_record_args = record_args['prt_record_args']
+    df_merged = pd.merge(df_Prt, df, how = 'inner', on = prt_record_args['RawRecID'])
+    # print(df_merged.shape)
+    df = df_merged
+
+    # y. sort the table by Parent IDs and DT
+    RecDT = record_args.get('RecDT', None)
+    RecID_Chain = prt_record_args.get('RecIDChain', [])
+    if RecDT is not None:
+        sorted_cols = RecID_Chain + [RecDT]
+    else: 
+        sorted_cols = RecID_Chain
+    if len(sorted_cols) > 0:
+        df = df.sort_values(sorted_cols).reset_index(drop = True)
+
+    # z. create a new column for RecID
+    RecID = record_args['RecID']
+    PrtRecID = prt_record_args.get('RecID', None)
+    if RecID not in df.columns:
+        assert PrtRecID is not None
+        df[RecID] = df[PrtRecID].astype(str) + '-' + df.groupby(PrtRecID).cumcount().astype(str)
+    #-------------------
+    return df
 
 
 def pipeline_for_RecName(rec_config,
@@ -400,7 +444,9 @@ def pipeline_for_RecName(rec_config,
         logger.info(f'current df_HumanRawRec: {df_HumanRawRec.shape} ...')
 
         # 7.2 get the df_HumanRecAttr: This is the pipeline A. 
+
         df_HumanRecAttr = RawRec_to_RecAttr_fn(df_HumanRawRec, df_Human, base_config, rec_config, attr_cols)
+        
         logger.info(f'current df_HumanRecAttr: {df_HumanRecAttr.shape} ...')
         # ---------------------------------------
 

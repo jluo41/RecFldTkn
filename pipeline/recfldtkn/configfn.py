@@ -114,23 +114,68 @@ def load_fldtkn_args(RecName, FldTknName, cohort_args, recfldtkn_config_path = N
     
     fldtkn_args = {}
     fldtkn_args = record_args['FldTknInfo'].get(FldTknName, fldtkn_args)
-    fldtkn_args['attr_cols'] = record_args['RecIDChain'] + record_args.get('DTCols', []) + fldtkn_args.get('value_cols', [])
+    
+    fldtkn_args['SPACE'] = cohort_args['SPACE']
+    # RFT_GROUP_SIZE, idx_group_size, usebucket = get_rec_related_size(RecName, cohort_args)
+    # fldtkn_args['RFT_GROUP_SIZE'] = RFT_GROUP_SIZE
+    # fldtkn_args['idx_group_size'] = idx_group_size
+    # fldtkn_args['usebucket'] = usebucket
+    # fldtkn_args['GROUP_SIZE'] = RFT_GROUP_SIZE
+
+    AttrFnName_list = FldTknName.split('-')[-1].split('.')
+    
+    AttrFnName = AttrFnName_list[-1]
+    PyFileName = RecName + '_' + AttrFnName
+    fldtkn_args['pypath'] = os.path.join(cohort_args['fldtkn_pyfolder'], PyFileName + '.py')
+    
+    
+    AttrFnName_to_Config = {}
+    num_proc = 4
+    for idx, AttrFnName in enumerate(AttrFnName_list):
+        # config = {}
+        # PyFileName = RecName + '_' + AttrFnName
+        # config['pypath'] = os.path.join(cohort_args['fldtkn_pyfolder'], PyFileName'.py')
+        # FldTknNameNew = RecName + '-' + PyFileName # '-'.join(AttrFnName_list[:idx+1])
+        # fldtkn_args_prefix = load_fldtkn_args(RecName, FldTknNameNew, cohort_args, recfldtkn_config_path = None)
+        fldtkn_args_prefix = record_args['FldTknInfo'][RecName + '-' + AttrFnName]
+        fldtkn_args_prefix['pypath'] = os.path.join(cohort_args['fldtkn_pyfolder'], RecName + '_' + AttrFnName + '.py')
+        AttrFnName_to_Config[AttrFnName] = fldtkn_args_prefix
+        num_proc = fldtkn_args_prefix.get('num_proc', 4)
+
+    # take the last one as the num_proc.
+    fldtkn_args['num_proc'] = num_proc
+        
+    fldtkn_args['AttrFnName_to_Config'] = AttrFnName_to_Config
+        
+    if len(AttrFnName_list) > 1:
+        derv_attr_cols = [RecName + '-' + '.'.join(AttrFnName_list[:idx + 1]) for idx in range(len(AttrFnName_list)-1)]
+    else:
+        derv_attr_cols = []
+    value_cols = list(set(sum([i.get('value_cols', []) for i in AttrFnName_to_Config.values()], [])))
+    
+    fldtkn_args['derv_attr_cols'] = derv_attr_cols
+    fldtkn_args['value_cols'] = value_cols
+    
+    fldtkn_args['attr_cols'] = record_args['RecIDChain'] + record_args.get('DTCols', []) + value_cols + derv_attr_cols
+    fldtkn_args['value_cols'] = value_cols
     fldtkn_args['FldTknName'] = FldTknName
+    fldtkn_args['Name'] = FldTknName
+    
 
     if 'external_source_path' in fldtkn_args:
         fldtkn_args['external_source_path'] = fldtkn_args['external_source_path'].replace('$DATA_EXTERNAL$', cohort_args['SPACE']['DATA_EXTERNAL'])
         fldtkn_args['external_source'] = pd.read_pickle(fldtkn_args['external_source_path'])    
 
-    RFT_GROUP_SIZE, idx_group_size, usebucket = get_rec_related_size(RecName, cohort_args)
-    fldtkn_args['RFT_GROUP_SIZE'] = RFT_GROUP_SIZE
-    fldtkn_args['idx_group_size'] = idx_group_size
-    fldtkn_args['usebucket'] = usebucket
-    fldtkn_args['GROUP_SIZE'] = RFT_GROUP_SIZE
-
-    fldtkn_args['pypath'] = os.path.join(cohort_args['fldtkn_pyfolder'], FldTknName.replace('-', '_') + '.py')
     # fldtkn_args['folder'] = cohort_args['fld_folder']
     fldtkn_args['recfldtkn_config_path'] = recfldtkn_config_path
     fldtkn_args['yaml_file_path'] = file_path
+    
+    
+    # FldTknName
+    # maybe also add more Demo Examples?
+    # for ICL. 
+    fldtkn_args['ContextDemo'] = None # TODO, adding the context demo.
+    
 
     return fldtkn_args
 

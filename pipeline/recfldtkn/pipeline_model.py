@@ -12,10 +12,25 @@ from .obsname import convert_case_observations_to_co_to_observation, get_RecName
 from .loadtools import fetch_trigger_tools
 from .loadtools import fetch_casetag_tools, fetch_casefilter_tools
 from .loadtools import load_ds_rec_and_info
+from datasets.fingerprint import Hasher
+from recfldtkn.observer import get_fn_case_GammaFullInfo
+import datasets
+import os
+import pandas as pd
+from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import ProcessPoolExecutor, as_completed
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format='[%(levelname)s:%(asctime)s:(%(filename)s@%(lineno)d %(name)s)]: %(message)s')
 
+
+def get_tkn_value(x, tkn_id, ids, wgts):
+    if tkn_id in x[ids]:
+        index = list(x[ids]).index(tkn_id)
+        return x[wgts][index]
+    else:
+        return 0
+            
 
 def load_complete_PipelineInfo(datapoint_args, base_config, use_inference):
 
@@ -44,137 +59,526 @@ def load_complete_PipelineInfo(datapoint_args, base_config, use_inference):
     return PipelineInfo
 
 
-def get_Trigger_Cases(TriggerCaseMethod, 
-                      cohort_label_list, 
-                      base_config, 
-                      SPACE, 
-                      RecName_to_dsRec = {},
-                      RecName_to_dsRecInfo = {}):
-    
-    Trigger_Tools = fetch_trigger_tools(TriggerCaseMethod, SPACE)
-    case_id_columns = Trigger_Tools['case_id_columns']
-    special_columns = Trigger_Tools['special_columns'] 
-    TriggerRecName = Trigger_Tools['TriggerRecName']
-    convert_TriggerEvent_to_Caseset = Trigger_Tools['convert_TriggerEvent_to_Caseset']
-    ###########################
-    if TriggerRecName in RecName_to_dsRec:
-        ds_rec = RecName_to_dsRec[TriggerRecName]
-    else:
-        ds_rec, _ = load_ds_rec_and_info(TriggerRecName, base_config, cohort_label_list)
-    df_case = convert_TriggerEvent_to_Caseset(ds_rec, case_id_columns, special_columns, base_config)
-    ###########################
-    return df_case
+def get_ds_case_to_process(InputCaseSetName, 
+                           cohort_label_list, 
+                           TriggerCaseMethod, 
+                           base_config, 
+                           SPACE,
+                           RecName_to_dsRec = {},
+                           RecName_to_dsRecInfo = {}):
+    '''
+        this function is designed to be used in the training pipeline only.
+        We only want to get a ds_case to tag, filter, split (optional), training, and inference. 
+    '''
+    if InputCaseSetName is None: 
+        COHORT = 'C' + '.'.join([str(i) for i in cohort_label_list])
+        TRIGGER = TriggerCaseMethod
+        InputCaseSetName = '-'.join([COHORT, TRIGGER])
+        
+    InputCaseFolder = os.path.join(SPACE['DATA_CaseSet'], InputCaseSetName)
+    InputCaseFile = InputCaseFolder + '.p'
 
-
-def convert_TriggerCases_to_LearningCases(df_case, 
-                                          cohort_label_list,
-                                          Trigger2LearningMethods, 
-                                          base_config, 
-                                          use_inference):
-    
-    CFQ_to_CaseFeatInfo = {}
-
-    if use_inference == True:
-        Trigger2LearningMethods = [i for i in Trigger2LearningMethods if i.get('type', None) != 'learning-only']
-       
-    # print(Trigger2LearningMethods)
-    SPACE = base_config['SPACE']
-    for method in Trigger2LearningMethods:
-        if method['op'] == 'Tag':
-            name = method['Name']
-            logger.info(f'CaseTag: {name}')
-            CaseTag_Tools = fetch_casetag_tools(name, SPACE)
-
-            subgroup_columns = CaseTag_Tools['subgroup_columns']
-            if 'InfoRecName' in CaseTag_Tools:
-                InfoRecName = CaseTag_Tools['InfoRecName']
-                ds_info, _ = load_ds_rec_and_info(InfoRecName, base_config, cohort_label_list)
-            else:
-                ds_info = None
-
-            fn_case_tagging = CaseTag_Tools['fn_case_tagging']
-            df_case = fn_case_tagging(df_case, ds_info, subgroup_columns, base_config)
-
-        elif method['op'] == 'Filter':
-            name = method['Name']
-            logger.info(f'CaseFilter: {name}')
-            CaseFilter_Tools = fetch_casefilter_tools(name, SPACE)
-            fn_case_filtering = CaseFilter_Tools['fn_case_filtering']
-            
-            logger.info(f'Before Filter: {df_case.shape}')
-            df_case = fn_case_filtering(df_case)
-            logger.info(f'After Filter: {df_case.shape}')
-
-        elif method['op'] == 'CFQ':
-            name = method['Name']
-            pypath = os.path.join(SPACE['CODE_FN'], 'fn_learning', f'{name}.py')
+        
+    if os.path.exists(InputCaseFolder):
+        assert os.path.isdir(InputCaseFolder)
+        L = []
+        if 'TaggingSize' in InputCaseFolder:
+            tag_method_list = sorted(os.listdir(InputCaseFolder))
+            for tag_method in tag_method_list:
+                file_list = sorted(os.listdir(os.path.join(InputCaseFolder, tag_method)))
+                df_case_tag = pd.concat([pd.read_pickle(os.path.join(InputCaseFolder, tag_method, f)) 
+                                        for f in file_list])
+                df_case_tag = df_case_tag.reset_index(drop = True)
+                L.append(df_case_tag)
+            pypath = os.path.join(base_config['trigger_pyfolder'], f'{TriggerCaseMethod}.py')
             module = load_module_variables(pypath)
-            fn_casefeat_querying = module.fn_casefeat_querying
-            df_case, CaseFeatInfo = fn_casefeat_querying(df_case, base_config)
-            # CaseFeatName = CaseFeatInfo['CaseFeatName']
-            CFQ_to_CaseFeatInfo[name] = CaseFeatInfo
-
-        elif method['op'] == 'TagCF':
-            name = method['Name']
-            pypath = os.path.join(SPACE['CODE_FN'], 'fn_learning', f'{name}.py')
-            module = load_module_variables(pypath)
-            fn_case_tagging_on_casefeat = module.fn_case_tagging_on_casefeat
-            
-            CFQName = method['CFQName']
-            CFQ_to_CaseFeatInfo = CFQ_to_CaseFeatInfo[CFQName]
-            df_case = fn_case_tagging_on_casefeat(df_case, CaseFeatInfo)
-
+            case_id_columns = module.case_id_columns
+            df_case = L[0]
+            for df_case_tag in L[1:]:
+                assert len(df_case) == len(df_case_tag)
+                columns = [i for i in df_case_tag.columns if i not in df_case.columns]
+                df_case = pd.merge(df_case, df_case_tag[case_id_columns + columns], on=case_id_columns)
         else:
-            raise ValueError(f'Unknown method: {method}')
+            file_list = sorted(os.listdir(InputCaseFolder))
+            df_case = pd.concat([pd.read_pickle(os.path.join(InputCaseFolder, f)) for f in file_list])
 
-    return df_case
+    elif os.path.exists(InputCaseFile):
+        assert os.path.exists(InputCaseFile)
+        df_case = pd.read_pickle(InputCaseFile)
+    else: 
+        ################## get df_case to tag ##################
+        # base_config = load_cohort_args(recfldtkn_config_path, SPACE)
+        Trigger_Tools = fetch_trigger_tools(TriggerCaseMethod, SPACE)
+        case_id_columns = Trigger_Tools['case_id_columns']
+        special_columns = Trigger_Tools['special_columns'] 
+        TriggerRecName = Trigger_Tools['TriggerRecName']
+        convert_TriggerEvent_to_Caseset = Trigger_Tools['convert_TriggerEvent_to_Caseset']
+        
+        if TriggerRecName in RecName_to_dsRec:
+            ds_rec = RecName_to_dsRec[TriggerRecName]
+        else:
+            ds_rec, _ = load_ds_rec_and_info(TriggerRecName, base_config, cohort_label_list)
+        
+        # ds_rec, _ = load_ds_rec_and_info(TriggerRecName, base_config, cohort_label_list)
+        df_case = convert_TriggerEvent_to_Caseset(ds_rec, case_id_columns, special_columns, base_config)
+        InputCaseFile = InputCaseFolder + '.p'
+        df_case.to_pickle(InputCaseFile)
+    # print(df_case.shape)
+    return InputCaseSetName, df_case
+    
+
+def fn_casefeat_querying(ds_case, 
+                         base_config, 
+                         case_id_columns,
+                         case_observations, 
+                         name_CaseGamma, 
+                         RecName_to_dsRec = {},
+                         RecName_to_dsRecInfo = {}, 
+                         use_CF_from_disk = True, 
+                         use_CO_from_disk = True):
+    
+    #############################
+    Gamma_Config = {
+        'case_observations':case_observations,
+        'name_CaseGamma': name_CaseGamma, # CF
+    }
+    #############################
+
+    # case_id_columns = base_config['case_id_columns']
+    df_case = ds_case.select_columns(case_id_columns).to_pandas()
+    CaseFeatInfo = get_fn_case_GammaFullInfo(Gamma_Config, 
+                                            base_config, 
+                                            RecName_to_dsRec, 
+                                            RecName_to_dsRecInfo, 
+                                            df_case,
+                                            use_CF_from_disk,
+                                            use_CO_from_disk)
+    
+    FnCaseFeatGamma = CaseFeatInfo['FnCaseFeatGamma']
+    batch_size = CaseFeatInfo.get('batch_size', 1000)
+    CaseFeatName = CaseFeatInfo['CaseFeatName']
+    # CF_vocab = CaseFeatInfo['CF_vocab']
+    ds_case = ds_case.map(FnCaseFeatGamma, 
+                            batched = True, 
+                            batch_size= batch_size, 
+                            load_from_cache_file = False, 
+                            new_fingerprint = CaseFeatName)
+    
+    if len(FnCaseFeatGamma.new_CFs) > 0 and use_CF_from_disk == True:
+        logger.info(f'----- Save CF {CaseFeatName}: to Cache File -----')
+        FnCaseFeatGamma.save_new_CFs_to_disk()
+    
+    for COName, FnCaseObsPhi in FnCaseFeatGamma.COName_to_FnCaseObsPhi.items():
+        if len(FnCaseObsPhi.new_COs) > 0 and use_CO_from_disk == True:
+            logger.info(f'----- Save CO {COName}: to Cache File -----')
+            FnCaseObsPhi.save_new_COs_to_disk()
+
+    return CaseFeatInfo, ds_case
 
 
-# Function to split DataFrame into chunks
-def split_dataframe(df, chunk_size):
-    chunks = []
-    num_chunks = len(df) // chunk_size + 1
-    for i in range(num_chunks):
-        chunks.append(df[i*chunk_size:(i+1)*chunk_size])
-    return chunks
+######### tagging tasks #########
+def process_df_tagging_tasks(df_case, 
+                             cohort_label_list,
+                             case_id_columns,
+                             InputCaseSetName, 
+                             TagMethod_List, 
+                             cf_to_QueryCaseFeatConfig,  
+                             base_config,
+                             SPACE, 
+                             RecName_to_dsRec, 
+                             RecName_to_dsRecInfo,
+                             use_CF_from_disk, 
+                             use_CO_from_disk, 
+                             chunk_id = None, 
+                             start_idx = None, 
+                             end_idx = None, 
+                             chunk_size = 500000,
+                             save_to_pickle = False,
+                             ):
+    
+    # You can also check whether it is in disk or not.
+    OutputCaseSetName = '-'.join([InputCaseSetName, 't.'+'.'.join(TagMethod_List)])
+    
+    for TagMethod in TagMethod_List:
+        # logger.info(f'--------- TagMethod {TagMethod} -------------')
+        # logger.info(f'--------- before tagging {df_case.shape} -------------')
+        if TagMethod in cf_to_QueryCaseFeatConfig:
+            QueryCaseFeatConfig = cf_to_QueryCaseFeatConfig[TagMethod]
+            TagMethodFile = TagMethod + '.' + Hasher.hash(QueryCaseFeatConfig)
+        else:
+            TagMethodFile = TagMethod
+
+        ############################### option 1: loading from disk ###############################
+        if save_to_pickle == True:
+            Folder = os.path.join(SPACE['DATA_CaseSet'], InputCaseSetName + '-Tagging' + f'Size{chunk_size}')
+            if chunk_id == None: chunk_id = 0
+            if start_idx == None: start_idx = 0
+            if end_idx == None: end_idx = len(df_case)
+
+            start_idx_k = start_idx // 1000
+            end_idx_k = end_idx // 1000
+            filename = f'idx{chunk_id:05}_{start_idx_k:06}k_{end_idx_k:06}k.p'
+            fullfilepath = os.path.join(Folder, TagMethodFile, filename)
+            fullfolderpath = os.path.dirname(fullfilepath)
+
+            if not os.path.exists(fullfolderpath): 
+                os.makedirs(fullfolderpath)
 
 
-def generate_random_tags(df, RANDOM_SEED):
+            # print(fullfilepath)
+            # print(os.path.exists(fullfilepath))
+            if os.path.exists(fullfilepath): 
+                df_case_new = pd.read_pickle(fullfilepath) 
+                columns = [i for i in df_case_new.columns if i not in df_case.columns]
+                df_case = pd.merge(df_case, df_case_new[case_id_columns + columns], on=case_id_columns)
+                continue 
+
+        ############################### option 2: calculating and saving to disk ###############################
+        if TagMethod in cf_to_QueryCaseFeatConfig:
+            QueryCaseFeatConfig = cf_to_QueryCaseFeatConfig[TagMethod]
+            case_observations = QueryCaseFeatConfig['case_observations']
+            name_CaseGamma = QueryCaseFeatConfig['name_CaseGamma']
+            tkn_name_list = QueryCaseFeatConfig['tkn_name_list']
+            
+            ds_case = datasets.Dataset.from_pandas(df_case)
+            CaseFeatInfo, ds_case = fn_casefeat_querying(ds_case, 
+                                                         base_config, 
+                                                         case_id_columns,
+                                                         case_observations, 
+                                                         name_CaseGamma, 
+                                                         RecName_to_dsRec,
+                                                         RecName_to_dsRecInfo, 
+                                                         use_CF_from_disk, 
+                                                         use_CO_from_disk)
+            
+            # assert name_CaseGamma is a special CaseGamma
+            CF_vocab = CaseFeatInfo['CF_vocab']
+            CaseFeatName = CaseFeatInfo['CaseFeatName']
+            rename_dict = {i: CaseFeatName + ':' + i for i in CF_vocab}
+            df_case = ds_case.to_pandas().rename(columns=rename_dict)
+
+            
+            ids  = CaseFeatName + ':' + 'input_ids'
+            wgts = CaseFeatName + ':' + 'input_wgts'
+            for tkn_name in tkn_name_list:
+                tkn_id = CF_vocab['input_ids']['tkn2tid'][tkn_name]
+                df_case[tkn_name] = df_case.apply(lambda x: get_tkn_value(x, tkn_id, ids, wgts), axis = 1)
+            df_case = df_case.drop(columns = [ids, wgts])
+            
+        else:
+            pypath = os.path.join(SPACE['CODE_FN'], 'fn_learning', f'{TagMethod}.py')
+            module = load_module_variables(pypath)
+            MetaDict = module.MetaDict
+            if 'InfoRecName' in MetaDict:
+                InfoRecName, subgroup_columns, fn_case_tagging = module.InfoRecName, module.subgroup_columns, module.fn_case_tagging
+                ds_info, _ = load_ds_rec_and_info(InfoRecName, base_config, cohort_label_list)
+                df_case = fn_case_tagging(df_case, ds_info, subgroup_columns, base_config)
+            elif 'fn_case_tagging_on_casefeat' in MetaDict:
+                fn_case_tagging_on_casefeat = MetaDict['fn_case_tagging_on_casefeat']
+                df_case = fn_case_tagging_on_casefeat(df_case)
+            else:
+                raise ValueError('No fn_case_tagging_on_casefeat or InfoRecName in the module')
+            
+        if save_to_pickle == True:
+            df_case.to_pickle(fullfilepath)
+
+    return OutputCaseSetName, df_case
+    
+
+def _process_chunk_tagging(chunk_id, df_case, chunk_size, 
+                           cohort_label_list, case_id_columns,
+                           InputCaseSetName, TagMethod_List, cf_to_QueryCaseFeatConfig, base_config,
+                           SPACE, RecName_to_dsRec, RecName_to_dsRecInfo, 
+                           use_CF_from_disk, use_CO_from_disk, save_to_pickle):
+    start_idx = chunk_id * chunk_size
+    end_idx = min((chunk_id + 1) * chunk_size, len(df_case))
+    df_case_chunk = df_case.iloc[start_idx:end_idx].reset_index(drop=True)
+    _, df_case_chunk_tagged = process_df_tagging_tasks(
+        df_case_chunk, 
+        cohort_label_list,
+        case_id_columns,
+        InputCaseSetName, 
+        TagMethod_List, 
+        cf_to_QueryCaseFeatConfig,  
+        base_config,
+        SPACE, 
+        RecName_to_dsRec, 
+        RecName_to_dsRecInfo,
+        use_CF_from_disk, 
+        use_CO_from_disk,
+        chunk_id, 
+        start_idx, 
+        end_idx, 
+        chunk_size,
+        save_to_pickle,
+    )
+    return df_case_chunk_tagged
+
+
+def process_df_tagging_tasks_in_chunks(df_case, 
+                                       cohort_label_list,
+                                       case_id_columns,
+                                       InputCaseSetName, 
+                                       TagMethod_List,
+                                       cf_to_QueryCaseFeatConfig,
+                                       base_config, 
+                                       SPACE, 
+                                       RecName_to_dsRec, 
+                                       RecName_to_dsRecInfo,
+                                       use_CF_from_disk,
+                                       use_CO_from_disk,
+                                       start_chunk_id = 0, 
+                                       end_chunk_id = None, 
+                                       chunk_size = 500000,
+                                       save_to_pickle = True, 
+                                       num_processors = 0):
+    
+    # --------------- get the tagging method name ---------------
+    OutputCaseSetName = '-'.join([InputCaseSetName, 'Tagging'])
+    Folder = os.path.join(SPACE['DATA_CaseSet'], OutputCaseSetName + f'Size{chunk_size}')
+    
+    # --------------- process tagging tasks ---------------
+    if end_chunk_id is None: end_chunk_id = len(df_case) // chunk_size + 1
+    chunk_id_list = range(start_chunk_id, end_chunk_id)
+
+
+
+    df_case_chunk_tagged_list = []
+    if num_processors > 1:
+        # with ProcessPoolExecutor(max_workers=num_processors) as executor:
+        #     df_case_chunk_tagged_list = list(executor.map(process_chunk, chunk_id_list))
+        with ProcessPoolExecutor(max_workers=num_processors) as executor:
+            futures = [executor.submit(
+                        _process_chunk_tagging, 
+                            chunk_id, df_case, chunk_size, 
+                            cohort_label_list, case_id_columns,
+                            InputCaseSetName, TagMethod_List, cf_to_QueryCaseFeatConfig, base_config,
+                            SPACE, RecName_to_dsRec, RecName_to_dsRecInfo, 
+                            use_CF_from_disk, use_CO_from_disk, save_to_pickle) 
+                
+                for chunk_id in chunk_id_list]
+
+            for future in as_completed(futures):
+                df_case_chunk_tagged_list.append(future.result())
+
+    else:
+        for chunk_id in chunk_id_list:
+            df_case_chunk_tagged = _process_chunk_tagging(
+                                        chunk_id, df_case, chunk_size, 
+                                        cohort_label_list, case_id_columns,
+                                        InputCaseSetName, TagMethod_List, cf_to_QueryCaseFeatConfig, base_config,
+                                        SPACE, RecName_to_dsRec, RecName_to_dsRecInfo, 
+                                        use_CF_from_disk, use_CO_from_disk, save_to_pickle)
+            df_case_chunk_tagged_list.append(df_case_chunk_tagged)
+
+    df_case_tagged_final = pd.concat(df_case_chunk_tagged_list, axis = 0).reset_index(drop = True)
+    OutputCaseSetName_final = '-'.join([InputCaseSetName, 't.'+'.'.join(TagMethod_List)])
+    return OutputCaseSetName_final, df_case_tagged_final
+
+
+######### casefeat tasks #########
+def process_df_casefeat_tasks(df_case, 
+                              cohort_label_list,
+                              case_id_columns,
+                              InputCaseSetName, 
+                              CaseFeat_List, 
+                              cf_to_CaseFeatConfig, 
+                              base_config,
+                              SPACE, 
+                              RecName_to_dsRec, 
+                              RecName_to_dsRecInfo,
+                              use_CF_from_disk, 
+                              use_CO_from_disk, 
+                              chunk_id, 
+                              start_idx, 
+                              end_idx, 
+                              chunk_size,
+                              save_to_pickle):
+    
+    ds_case = datasets.Dataset.from_pandas(df_case)
+    cf_to_CaseFeatInfo = {}
+    for CaseFeat in CaseFeat_List:
+        logger.info(f'--------- CaseFeat {CaseFeat} -------------')
+
+        assert  CaseFeat in cf_to_CaseFeatConfig
+        CaseFeatConfig = cf_to_CaseFeatConfig[CaseFeat]
+        case_observations = CaseFeatConfig['case_observations']
+        name_CaseGamma = CaseFeatConfig['name_CaseGamma']
+        old_columns = ds_case.column_names
+        CaseFeatInfo, ds_case = fn_casefeat_querying(ds_case, 
+                                                     base_config, 
+                                                     case_id_columns,
+                                                     case_observations, 
+                                                     name_CaseGamma, 
+                                                     RecName_to_dsRec,
+                                                     RecName_to_dsRecInfo, 
+                                                     use_CF_from_disk, 
+                                                     use_CO_from_disk)
+        
+        new_columns = [i for i in ds_case.column_names if i not in old_columns]
+        rename_dict = {i: CaseFeat + '.' + i for i in new_columns}
+        for old_name, new_name in rename_dict.items():
+            ds_case = ds_case.rename_column(old_name, new_name)
+        cf_to_CaseFeatInfo[CaseFeat] = CaseFeatInfo
+    # OutputCaseSetName = '-'.join([InputCaseSetName, 'cf.'+'.'.join(CaseFeat_List)])
+    return cf_to_CaseFeatInfo, ds_case
+
+
+def _process_chunk_casefeat(chunk_id, df_case, chunk_size, 
+                           cohort_label_list, case_id_columns,
+                           InputCaseSetName, CaseFeat_List, cf_to_CaseFeatConfig, base_config,
+                           SPACE, RecName_to_dsRec, RecName_to_dsRecInfo, 
+                           use_CF_from_disk, use_CO_from_disk, save_to_pickle):
+    start_idx = chunk_id * chunk_size
+    end_idx = min((chunk_id + 1) * chunk_size, len(df_case))
+    df_case_chunk = df_case.iloc[start_idx:end_idx].reset_index(drop=True)
+    _, df_case_chunk_casefeat = process_df_casefeat_tasks(
+        df_case_chunk, 
+        cohort_label_list,
+        case_id_columns,
+        InputCaseSetName, 
+        CaseFeat_List, 
+        cf_to_CaseFeatConfig,  
+        base_config,
+        SPACE, 
+        RecName_to_dsRec, 
+        RecName_to_dsRecInfo,
+        use_CF_from_disk, 
+        use_CO_from_disk,
+        chunk_id, 
+        start_idx, 
+        end_idx, 
+        chunk_size,
+        save_to_pickle,
+    )
+    return df_case_chunk_casefeat
+
+
+def process_df_casefeat_tasks_in_chunks(df_case, 
+                                        cohort_label_list,
+                                        case_id_columns,
+                                        InputCaseSetName, 
+                                        CaseFeat_List, 
+                                        cf_to_CaseFeatConfig, 
+                                        base_config,
+                                        SPACE, 
+                                        RecName_to_dsRec, 
+                                        RecName_to_dsRecInfo,
+                                        use_CF_from_disk, 
+                                        use_CO_from_disk,
+                                        start_chunk_id = 0, 
+                                        end_chunk_id = None, 
+                                        chunk_size = 500000,
+                                        save_to_pickle = False, 
+                                        num_processors = 1):
+    
+    # --------------- cf_to_CaseFeatInfo ---------------
+    cf_to_CaseFeatInfo = {}
+    for CaseFeat in CaseFeat_List:
+        assert  CaseFeat in cf_to_CaseFeatConfig
+        CaseFeatConfig = cf_to_CaseFeatConfig[CaseFeat]
+        case_observations = CaseFeatConfig['case_observations']
+        name_CaseGamma = CaseFeatConfig['name_CaseGamma']
+        #############################
+        Gamma_Config = {
+            'case_observations':case_observations,
+            'name_CaseGamma': name_CaseGamma, # CF
+        }
+        #############################
+        # df_case = ds_case.select_columns(case_id_columns).to_pandas()
+        CaseFeatInfo = get_fn_case_GammaFullInfo(Gamma_Config, 
+                                                 base_config, 
+                                                 RecName_to_dsRec, 
+                                                 RecName_to_dsRecInfo, 
+                                                 df_case[case_id_columns],
+                                                 use_CF_from_disk,
+                                                 use_CO_from_disk)
+        cf_to_CaseFeatInfo[CaseFeat] = CaseFeatInfo
+        
+    
+    # --------------- get the tagging method name ---------------
+    OutputCaseSetName = '-'.join([InputCaseSetName, 'Tagging'])
+    Folder = os.path.join(SPACE['DATA_CaseSet'], OutputCaseSetName + f'Size{chunk_size}')
+
+    # --------------- process tagging tasks ---------------
+    if end_chunk_id is None: end_chunk_id = len(df_case) // chunk_size + 1
+    chunk_id_list = range(start_chunk_id, end_chunk_id)
+
+    ds_case_chunk_casefeat_list = []
+    if num_processors > 1:
+        # with ProcessPoolExecutor(max_workers=num_processors) as executor:
+        #     df_case_chunk_tagged_list = list(executor.map(process_chunk, chunk_id_list))
+        with ProcessPoolExecutor(max_workers = num_processors) as executor:
+            futures = [executor.submit(
+                        _process_chunk_casefeat, 
+                            chunk_id, df_case, chunk_size, 
+                           cohort_label_list, case_id_columns,
+                           InputCaseSetName, CaseFeat_List, cf_to_CaseFeatConfig, base_config,
+                           SPACE, RecName_to_dsRec, RecName_to_dsRecInfo, 
+                           use_CF_from_disk, use_CO_from_disk, save_to_pickle) 
+                
+                for chunk_id in chunk_id_list]
+
+            for future in as_completed(futures):
+                ds_case_chunk_casefeat_list.append(future.result())
+                # future.result()
+    else:
+        for chunk_id in chunk_id_list:
+            ds_case_chunk_casefeat = _process_chunk_casefeat(
+                                        chunk_id, df_case, chunk_size, 
+                                        cohort_label_list, case_id_columns,
+                                        InputCaseSetName, CaseFeat_List, cf_to_CaseFeatConfig, base_config,
+                                        SPACE, RecName_to_dsRec, RecName_to_dsRecInfo, 
+                                        use_CF_from_disk, use_CO_from_disk, save_to_pickle
+                                    ) 
+            ds_case_chunk_casefeat_list.append(ds_case_chunk_casefeat)
+                            
+    ds_case = concatenate_datasets(ds_case_chunk_casefeat_list)
+    return cf_to_CaseFeatInfo, ds_case
+
+
+######### split tasks #########
+def generate_random_tags(df_case, RANDOM_SEED, RootID, ObsDT):
     np.random.seed(RANDOM_SEED)
-    RootID, ObsDT = 'PID', 'ObsDT'
+    # RootID, ObsDT = 'PID', 'ObsDT'
 
     # down sample 
-    df['RandDownSample'] = np.random.rand(len(df))
+    df_case['RandDownSample'] = np.random.rand(len(df_case))
 
     # in&out
-    df_P = df[[RootID]].drop_duplicates().reset_index(drop = True)
+    df_P = df_case[[RootID]].drop_duplicates().reset_index(drop = True)
     df_P['RandInOut'] = np.random.rand(len(df_P))
-    df = pd.merge(df, df_P)
+    df_case = pd.merge(df_case, df_P)
 
     # test
-    df['CaseLocInP'] = df.groupby(RootID).cumcount()
-    df = pd.merge(df, df[RootID].value_counts().reset_index())
-    df['CaseRltLocInP'] = df['CaseLocInP'] /  df['count']
+    df_case['CaseLocInP'] = df_case.groupby(RootID).cumcount()
+    df_case = pd.merge(df_case, df_case[RootID].value_counts().reset_index())
+    df_case['CaseRltLocInP'] = df_case['CaseLocInP'] /  df_case['count']
+    
     # test other options
-    df['RandTest'] = np.random.rand(len(df))
+    df_case['RandTest'] = np.random.rand(len(df_case))
 
     # validation
-    df['RandValidation'] = np.random.rand(len(df))
+    df_case['RandValidation'] = np.random.rand(len(df_case))
 
-    df = df.drop(columns = ['CaseLocInP', 'count']).reset_index(drop = True)
-    df = df.sort_values('RandDownSample').reset_index(drop = True)
+    df_case = df_case.drop(columns = ['CaseLocInP', 'count']).reset_index(drop = True)
+    df_case = df_case.sort_values('RandDownSample').reset_index(drop = True)
 
     random_columns = ['RandDownSample', 'RandInOut', 'CaseRltLocInP', 'RandTest', 'RandValidation']
-    return df, random_columns
+    return df_case, random_columns
 
 
-def assign_caseSplitTag_to_dsCaseLearning(df_case_learning, 
-                                          RANDOM_SEED, 
-                                          downsample_ratio, out_ratio, 
-                                          test_ratio, valid_ratio):
+def assign_caseSplitTag_to_dsCase(df_case, 
+                                RANDOM_SEED, 
+                                RootID, 
+                                ObsDT,
+                                downsample_ratio, 
+                                out_ratio, 
+                                test_ratio, 
+                                valid_ratio):
 
-    df = df_case_learning 
-    df_rs, random_columns = generate_random_tags(df, RANDOM_SEED)
+    df = df_case 
+    df_rs, random_columns = generate_random_tags(df, RANDOM_SEED, RootID, ObsDT,)
     df_dsmp = df_rs[df_rs['RandDownSample'] <= downsample_ratio].reset_index(drop = True)
 
     df_dsmp['Out'] = df_dsmp['RandInOut'] < out_ratio
@@ -213,439 +617,18 @@ def assign_caseSplitTag_to_dsCaseLearning(df_case_learning,
     return df_dsmp
 
 
-# -------------------------------- deprecated --------------------------------
 
-def map_case_to_IOTVT_split_type(x, out_ratio, test_ratio, valid_ratio):
-    if x['RandInOut'] < out_ratio:
-        InOut = 'out'
-    else:
-        InOut = 'in'    
-    
-    if 'tail' in str(test_ratio):
-        TestSelector = 'CaseRltLocInP'
-        test_ratio = float(test_ratio.replace('tail', ''))
-        test_threshold = 1 - test_ratio
-    elif type(test_ratio) != float and type(test_ratio) != int:
-        TestSelector = 'ObsDT'
-        test_threshold = pd.to_datetime(test_ratio)
-    else:
-        TestSelector = 'RandTest' 
-        # like converting 0.1 to 0.9
-        test_threshold = 1 - test_ratio
-
-    if 'tail' in str(valid_ratio):
-        ValidSelector = 'CaseRltLocInP'
-        valid_ratio = float(valid_ratio.replace('tail', ''))
-        valid_threshold = 1 - valid_ratio
-    elif type(valid_ratio) != float and type(valid_ratio) != int:
-        ValidSelector = 'ObsDT'
-        valid_threshold = pd.to_datetime(valid_ratio)
-    else:
-        ValidSelector = 'RandTest' 
-        valid_threshold = 1 - valid_ratio
-    
-    if x[TestSelector] > test_threshold:
-        TVT = 'test'
-    else:
-        if x[ValidSelector] > valid_threshold:
-            TVT = 'valid'
-        else:
-            TVT = 'train'
-    InOutTVT = InOut + '_' + TVT    
-    return InOutTVT
-
-
-def get_dataset_from_set_selector(set_selector, dataset_name, idx_to_groupname_all):
-    # for train_set 
-    groupname_dict = idx_to_groupname_all.copy()
-
-    ds_subset_name = set_selector.split(':')[0]
-    # print(ds_subset_name)
-    ds_subset_name_list_all = ['in_train', 'in_valid', 'in_test', 'out_test', 'out_train', 'out_valid']
-    ds_subset_name_list = [i for i in ds_subset_name_list_all if ds_subset_name in i]
-
-    if ':' in set_selector:
-        groupname_types = set_selector.split(':')[-1].split('&')
-        # print(groupname_types)
-        for groupname_type in groupname_types:
-            # print(groupname_type)
-            groupname_dict = {k: v for k, v in groupname_dict.items() if groupname_type in v}
-
-    # print('the number of group:', len(groupname_dict))
-
-    L = []
-    for ds_subset_name in ds_subset_name_list:
-        for idx, groupname in groupname_dict.items():
-            if 'CaseFolder' not in dataset_name:
-                path = os.path.join(dataset_name + '-' + ds_subset_name, groupname)
-                # print(path)
-                if os.path.exists(path) == False: continue
-                ds = datasets.load_from_disk(path)
-                print(groupname, len(ds))
-            else:
-                path = os.path.join(dataset_name + '-' + ds_subset_name, groupname + '.p')
-                # print(path)
-                if os.path.exists(path) == False: continue
-                df = pd.read_pickle(path)
-                ds = datasets.Dataset.from_pandas(df)
-                print(groupname, len(ds))
-            L.append(ds)
-    if len(L) > 0:
-        ds = concatenate_datasets(L)
-    else:
-        ds = None 
-    return ds
-
-
-def get_caseset_to_observe(group_id, CaseFolder, case_id_columns, cohort_args):
-    RootID = cohort_args['RootID']; ObsDT  = 'ObsDT'
-    group_name_list = [i for i in os.listdir(CaseFolder) if '.p' in i]
-    group_name_list = dict(sorted({int(i.split('_')[0]): i.replace('.p', '') for i in group_name_list}.items()))
-
-    if group_id in group_name_list:
-        group_name = group_name_list[group_id]
-        df_case = pd.read_pickle(os.path.join(CaseFolder, f'{group_name}.p'))
-        
-        if len(case_id_columns) > 0: 
-            df_case = df_case[case_id_columns].reset_index(drop=True)
-
-        ds_case = datasets.Dataset.from_pandas(df_case)
-    else:
-        group_name = None 
-        ds_case = None
-    return group_name, ds_case
-
-
-def get_ds_case_dict_from_settings(caseset_name, 
-                                   splitset_name_list, 
-                                   subgroup_id_list, 
-                                   subgroup_filter_fn, 
-                                   cohort_args,
-                                   case_id_columns = []):
-    # caseset_name = args.caseset_name
-    # print(caseset_name)
-    # splitset_name_list = update_args_to_list(args.splitset_name_list)
-    # print(splitset_name_list)
-    SPACE = cohort_args['SPACE']
-    case_type_name_list = []
-    for splitset_name in splitset_name_list:
-        if 'rs' in splitset_name:
-            case_type_name_list.append(caseset_name + '-' + splitset_name)
-        else:
-            case_type_name_list.append(caseset_name)
-    
-    # case_type_name_list
-    # case_id_columns = update_args_to_list(args.case_id_columns) 
-
-    d = {}
-    for case_type in case_type_name_list:
-        # print('\n========================')
-        # print('case_type---->', case_type)
-
-        # L = []
-        for group_id in subgroup_id_list:
-            # print('group_id------->', group_id)
-            CaseFolder = os.path.join(SPACE['DATA_TASK'], 'CaseFolder', case_type)
-            # print(CaseFolder)
-            
-            if os.path.exists(CaseFolder) == False:
-                print(f'CaseFolder does not exist: {CaseFolder}')
-                print('TODO: ---- in the future, the Case Folder should be automatically created.')
-                continue
-
-            group_name, ds_case = get_caseset_to_observe(group_id, CaseFolder, case_id_columns, cohort_args)
-            d[f'{case_type}|{group_name}'] = ds_case
-
-    ds_case_dict = datasets.DatasetDict(d)
-    
-    if subgroup_filter_fn == 'None': 
-        ds_case_dict = ds_case_dict
-    else:
-        # TODO
-        ds_case_dict = ds_case_dict.filter(subgroup_filter_fn)
-        
-    return ds_case_dict
-
-
-def get_data_source_information(groupname_ids, 
-                                groupname_selected_list,
-                                case_tkn_name_list, 
-                                CaseFolder, 
-                                CaseObsFolder):
-
-    casetkn_name_to_namepattern = {i.split(':')[0]:i.split(':')[-1] for i in case_tkn_name_list}
-    print(casetkn_name_to_namepattern)
-
-    L = []
-    for idx, groupname in enumerate(groupname_selected_list):
-        path = os.path.join(CaseFolder, groupname + '.p')
-        # print(path)
-        df = pd.read_pickle(path)
-        case_num = len(df)
-        d = {}
-        d['group_id'] = int(groupname_ids[idx])
-        d['group_name'] = groupname
-        d['case_num'] = len(df)
-
-        folder = os.path.join(CaseObsFolder, groupname)
-        if os.path.exists(folder):
-            obs_list = os.listdir(folder)
-        else:
-            obs_list = [] 
-
-        if len(obs_list) == 0:
-            print('For group: ', groupname)
-            print('No obs folder: ', folder)
-            continue 
-            
-        d['obs_list'] = obs_list
-        for case_tkn_name, pattern in casetkn_name_to_namepattern.items():
-            case_tkn_name_keys = pattern.split('*')
-            obs_selected = [s for s in obs_list if all(key in s for key in case_tkn_name_keys)]
-            d[case_tkn_name] = obs_selected
-        L.append(d)
-
-    df = pd.DataFrame(L).sort_values('group_id').reset_index(drop=True)
-    total_case_num = df['case_num'].sum()
-    print('total_case_num: ', total_case_num)
-    # print(df)
-
-    columns = ['group_id', 'group_name', 'case_num']
-    print(df[columns])
-    return df 
-
-
-def get_ds_tkn_from_dfinfo(df, case_tkn_name_list, CaseObsFolder):
-    casetkn_name_to_namepattern = {i.split(':')[0]:i.split(':')[-1] for i in case_tkn_name_list}
-    print(casetkn_name_to_namepattern)
-    RootID, ObsDT = 'PID', 'ObsDT'
-    group_name_to_ds = {}
-    for idx, row in df.iterrows():
-        group_name = row['group_name']
-        # ds_cat = None 
-        ds_cat = {}
-        for idx, case_tkn_name in enumerate(casetkn_name_to_namepattern):
-            obs_selected = row[case_tkn_name]
-            assert len(obs_selected) == 1   
-            obs_name = obs_selected[0]
-            # print(group_name, case_tkn_name, len(obs_selected))
-
-            path = os.path.join(CaseObsFolder, group_name, obs_name)
-            # print(path)
-            ds = datasets.load_from_disk(path)
-            columns = [i for i in ds.column_names if i not in [RootID, ObsDT]]  
-            for column in columns:
-                ds = ds.rename_column(column, case_tkn_name + '-' + column)
-            if idx != 0: ds = ds.remove_columns([RootID, ObsDT])
-            # print(ds)
-            ds_cat[case_tkn_name] = ds
-
-        ds_cat = datasets.concatenate_datasets([v for k, v in ds_cat.items()], axis=1)
-        group_name_to_ds[group_name] = ds_cat
-
-    ds_tknidx_dict = datasets.DatasetDict(group_name_to_ds)
-    return ds_tknidx_dict
-
-
-def adding_random_labels_to_ds(ds_tknidx, test_ratio):
-    RootID, ObsDT = 'PID', 'ObsDT'
-    np.random.seed(42)
-    ds_pdt = ds_tknidx.select_columns([RootID, ObsDT])
-    df_pdt = ds_pdt.to_pandas()
-
-    df_pdt['ObsIdx'] = df_pdt.groupby(RootID).cumcount()
-    df_pdt = pd.merge(df_pdt, df_pdt[RootID].value_counts().reset_index())
-    df_pdt['ObsIdxTile'] = df_pdt['ObsIdx'] /  df_pdt['count']
-    df_pdt['FutCaseTest'] = (df_pdt['ObsIdxTile'] >= (1- test_ratio)).astype(int) 
-
-    df_pdt['RandNum'] = np.random.rand(len(df_pdt))
-    df_P = df_pdt[['PID']].drop_duplicates().reset_index(drop = True)
-    print(df_P.shape)
-    print(df_pdt.shape)
-    df_P['RandPNum'] = np.random.rand(len(df_P))
-    df_pdt = pd.merge(df_pdt, df_P)
-    print(df_pdt.shape)
-
-    ds_tknidx = ds_tknidx.add_column('ObsIdxTile', df_pdt['ObsIdxTile'])
-    ds_tknidx = ds_tknidx.add_column('RandNum', df_pdt['RandNum'])
-    ds_tknidx = ds_tknidx.add_column('RandPNum', df_pdt['RandPNum'])
-    ds_tknidx = ds_tknidx.add_column('FutCaseTest', df_pdt['FutCaseTest'])
-    # print(ds_tknidx)
-    return ds_tknidx
-
-
-def conduct_downsample_inout_train_valid_test(ds_tknidx, downsample_ratio, out_ratio, test_ratio, valid_ratio):
-
-    ds_tknidx = adding_random_labels_to_ds(ds_tknidx, test_ratio)
-
-    print(f'\n================= Downsample Ratio is: {downsample_ratio} =================')
-    # df_tknidx = ds_tknidx.to_pandas()
-    # ds_tknidx_downsampled = ds_tknidx.sort('RandNum').select(range(0, int(len(ds_tknidx) * downsample_ratio)))
-    ds_tknidx_downsampled = ds_tknidx.filter(lambda example: example['RandNum'] <= downsample_ratio)
-    # ds_tknidx_downsampled = ds_tknidx_downsampled.flatten_indices() 
-    # df_tknidx = df_tknidx.sort_values('RandNum').iloc[:int(len(df_tknidx) * downsample_ratio)].reset_index(drop=True)
-    # ds_tknidx_downsampled = datasets.Dataset.from_pandas(df_tknidx)
-    print(ds_tknidx_downsampled)
-
-    print(f'\n================= Split In & Out: out_ratio-{out_ratio} =================')
-    ds_tknidx_downsampled_PSorted = ds_tknidx_downsampled.sort('RandPNum')
-    ds_tknidx_downsampled_in  = ds_tknidx_downsampled_PSorted.select(range(0, int(len(ds_tknidx_downsampled_PSorted) * (1-out_ratio))))
-    ds_tknidx_downsampled_in = ds_tknidx_downsampled_in.flatten_indices()
-    ds_tknidx_downsampled_out = ds_tknidx_downsampled_PSorted.select(range(int(len(ds_tknidx_downsampled_PSorted) * (1-out_ratio)), len(ds_tknidx_downsampled_PSorted)))
-    ds_tknidx_downsampled_out = ds_tknidx_downsampled_out.flatten_indices()
-
-    # print(ds_tknidx_downsampled_in)
-    # print(ds_tknidx_downsampled_out)
-
-    ds_dict = {
-        'in': ds_tknidx_downsampled_in,
-        'out': ds_tknidx_downsampled_out
-    }
-
-    ####### for in data process #######
-    name = 'in'
-    ds = ds_dict[name]
-    test_size = ds.select_columns(['FutCaseTest']).to_pandas()['FutCaseTest'].sum()
-    train_size = len(ds) - test_size
-    # print('train_valid_size: ', train_size)
-    # print('test_size: ', test_size) 
-
-    ds = ds.sort('FutCaseTest')
-    total_size = len(ds)
-    if test_size == 0:
-        test_dataset = None 
-    else:
-        test_dataset = ds.select(range(total_size - test_size, total_size))
-
-    trainvalid_dataset = ds.select(range(0, total_size - test_size))
-    train_valid_split = trainvalid_dataset.train_test_split(test_size=valid_ratio)
-    train_dataset = train_valid_split['train']
-    valid_dataset = train_valid_split['test']
-
-    columns_to_drop = ['FutCaseTest', 'RandNum', 'RandPNum', 'ObsIdxTile']
-    d = {
-        'in_train': train_dataset, # .remove_columns(columns_to_drop), 
-        'in_valid': valid_dataset, # .remove_columns(columns_to_drop), 
-        'in_test':  test_dataset, # .remove_columns(columns_to_drop),
-    }
-
-    ####### for in data process #######
-    name = 'out'
-    ds = ds_dict[name]
-    d['out_whole'] = ds# .remove_columns(['FutCaseTest', 'RandNum'])
-
-    test_size = ds.select_columns(['FutCaseTest']).to_pandas()['FutCaseTest'].sum()
-    # train_size = len(ds_tknidx_downsampled) - test_size
-    ds_tknidx_downsampled_sorted = ds.sort('FutCaseTest')
-    total_size = len(ds)
-    test_dataset = ds_tknidx_downsampled_sorted.select(range(total_size - test_size, total_size))
-    d['out_test'] = test_dataset # .remove_columns(['FutCaseTest', 'RandNum'])
-
-    raw_datasets = datasets.DatasetDict({k: v for k, v in d.items() if v is not None})
-    # print(raw_datasets)
-    for name in raw_datasets.keys():
-        raw_datasets[name] = raw_datasets[name].remove_columns(columns_to_drop)
-
-    return raw_datasets
-
-
-def get_dataset_from_set_selector(set_selector, dataset_name, idx_to_groupname_all):
-    # for train_set 
-    groupname_dict = idx_to_groupname_all.copy()
-
-    ds_subset_name = set_selector.split(':')[0]
-    # print(ds_subset_name)
-    ds_subset_name_list_all = ['in_train', 'in_valid', 'in_test', 'out_test', 'out_train', 'out_valid']
-    ds_subset_name_list = [i for i in ds_subset_name_list_all if ds_subset_name in i]
-
-    if ':' in set_selector:
-        groupname_types = set_selector.split(':')[-1].split('&')
-        # print(groupname_types)
-        for groupname_type in groupname_types:
-            # print(groupname_type)
-            groupname_dict = {k: v for k, v in groupname_dict.items() if groupname_type in v}
-
-    # print('the number of group:', len(groupname_dict))
-
-    L = []
-    for ds_subset_name in ds_subset_name_list:
-        for idx, groupname in groupname_dict.items():
-            path = os.path.join(dataset_name + '-' + ds_subset_name, groupname)
-            if os.path.exists(path) == False: continue
-            # print(path)
-            ds = datasets.load_from_disk(path)
-            print(groupname, len(ds))
-            # print([i for i in ds])
-            # ds = {k: v for k, v in ds.items() if ds_subset_name in k}
-            # if ds_subset_name not in ds: continue
-            # if len(ds) == 0: continue 
-            # if len(ds) == 0:
-            #     ds_subset_name_dataset = [v for k, v in ds.items()][0]
-            # else:
-            #     ds_subset_name_dataset = concatenate_datasets([v for k, v in ds.items()])
-            # print(groupname, len(ds_subset_name_dataset))
-            L.append(ds)
-    if len(L) > 0:
-        ds = concatenate_datasets(L)
-    else:
-        ds = None 
-    return ds
-
-
-
-def load_model_args(model_checkpoint_name, base_config, inference_mode = False):
-    SPACE = base_config['SPACE']
-    full_model_path = os.path.join(SPACE['MODEL_REPO'], model_checkpoint_name)  
-    model_args_path = os.path.join(full_model_path, f'model_args.json')
-    with open(model_args_path, 'r') as json_file:
-        model_args = json.load(json_file)
-        
-    # 1. get TriggerCaseMethod
-    TriggerCaseMethod = model_args['TriggerCaseMethod']
-    pypath = os.path.join(base_config['trigger_pyfolder'], f'{TriggerCaseMethod}.py')
-    module = load_module_variables(pypath)
-    model_args['TriggerRecName'] = module.TriggerRecName
-    model_args['case_id_columns'] = module.case_id_columns
-    model_args['special_columns'] = module.special_columns
-    model_args['convert_TriggerEvent_to_Caseset'] = module.convert_TriggerEvent_to_Caseset
-
-    # 2. get case_observations
-    if inference_mode == True:
-        case_observations = model_args['case_observations']
-        case_observations = [co for co in case_observations if 'Af' not in co.split(':')[0] and 'Fut' not in co.split(':')[0]]
-        model_args['case_observations'] = case_observations
-    else:
-        case_observations = model_args['case_observations']
-    co_to_CaseObsName, co_to_CaseObsNameInfo = convert_case_observations_to_co_to_observation(case_observations)
-    PipelineInfo = get_RecNameList_and_FldTknList(co_to_CaseObsNameInfo)
-    
-    # 3. get record_sequence
-    record_sequence = PipelineInfo['RecNameList']
-    RecName_to_PrtRecName = base_config['RecName_to_PrtRecName']
-    record_sequence_prt = [RecName_to_PrtRecName[recname] for recname in record_sequence if RecName_to_PrtRecName[recname] != 'None']
-    # print(record_sequence_prt)
-    new_records = [i for i in record_sequence_prt if i not in record_sequence]
-    while len(new_records) > 0:
-        record_sequence.extend(new_records)
-        record_sequence_prt = [RecName_to_PrtRecName[recname] for recname in record_sequence if RecName_to_PrtRecName[recname] != 'None']
-        new_records = [i for i in record_sequence_prt if i not in record_sequence]
-    record_sequence = [recname for recname in base_config['RecName_Sequence'] if recname in PipelineInfo['RecNameList']]
-
-    PipelineInfo['RecNameList'] = record_sequence # [recname for recname in base_config['RecNameList'] if recname in PipelineInfo['RecNameList']]
-    PipelineInfo['FldTknList'] = sorted([fldtkn + 'Tkn' for fldtkn in PipelineInfo['FldTknList']])
-    model_args['record_sequence'] = record_sequence
-    model_args['PipelineInfo'] = PipelineInfo
-    model_args['co_to_CaseObsName'] = co_to_CaseObsName
-    model_args['co_to_CaseObsNameInfo'] = co_to_CaseObsNameInfo
-
-
-    # 4. update the path
-
-    path_list = [i for i in model_args if '_path' in i]
-    for path_name in path_list:
-        if full_model_path in model_args[path_name]: continue 
-        model_args[path_name] = os.path.join(full_model_path, model_args[path_name])
-
-    model_args['full_model_path'] = full_model_path
-    return model_args
-
+######### filtering tasks #########
+def process_df_filtering_tasks(df_case, FilterMethod_List, SPACE):
+    for FilterMethod in FilterMethod_List:
+        logger.info(f'FilterMethod: {FilterMethod}')
+        pypath = os.path.join(SPACE['CODE_FN'], 'fn_learning', f'{FilterMethod}.py')
+        module = load_module_variables(pypath)
+
+        fn_case_filtering = module.fn_case_filtering
+        logger.info(f'before filtering: {df_case.shape}')
+        df_case = fn_case_filtering(df_case)
+        logger.info(f'after filtering: {df_case.shape}')
+    return df_case
+
+######### inference tasks #########

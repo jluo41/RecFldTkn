@@ -459,6 +459,7 @@ class CaseObserverTransformer:
             for RecObsName, RecObsInfo in RecObsName_to_RecObsInfo.items():
                 # ROinfo = RecObsInfo
                 RecName = RecObsInfo['RecName']
+                RecDT = RecObsInfo['rec_args']['RecDT']
                 df_rec_info = RecObsInfo['df_rec_info'] # R_i
                 ds_rec_p = RecName_to_REC_P[RecName][PIDValue] # R_i
 
@@ -478,6 +479,37 @@ class CaseObserverTransformer:
                 info_p = df_rec_info.loc[PIDValue]
                 dates = info_p['dates'] # <--- will this still take time?
 
+                assert len(dates) == len(ds_rec_p)
+                # print('\n' + RecObsName)
+                # print(idx_to_case_example[idx])
+                
+                # df_rec_p = ds_rec_p.to_pandas()
+                # print(ds_rec_p)
+                # print(df_rec_p.head())
+                # print(df_rec_p['DT_s'].min(), '-----', df_rec_p['DT_s'].max())   
+                # print(df_rec_p['DT_s'].iloc[0], '-----', df_rec_p['DT_s'].iloc[-1]) 
+                # dates = info_p['dates']
+                # print(dates[0], '----', dates[-1])
+
+                # print(dates[0], '----', ds_rec_p[RecDT][0].isoformat())
+                # print(dates[-1], '----', ds_rec_p[RecDT][-1].isoformat())
+
+                # we first select row, and then select columns to get faster speed.
+                # otherwise, 10x lower speed.
+                assert dates[0] == ds_rec_p[0][RecDT].isoformat()
+                assert dates[-1] == ds_rec_p[-1][RecDT].isoformat()
+                
+
+                ######### TO COMMENT OUT
+                # print(pd.Series(ds_rec_p['PID']).value_counts())
+                # print('ds_rec_p:')
+                # print([i.isoformat() for i in ds_rec_p['DT_s'][:10]])
+                # print([i.isoformat() for i in ds_rec_p['DT_s'][-10:]])
+                # # print(ds_rec_p['DT_s'][-10:])
+                # print('dates:')
+                # print(dates[:10])
+                # print(dates[-10:])
+                #########
                 
                 # get the DT_s and DT_e 
                 DistStartToPredDT = CkpdInfo['DistStartToPredDT']
@@ -487,10 +519,18 @@ class CaseObserverTransformer:
                 # raise the caution here: the datetime format need to be consistent. 
                 DT_s = (ObsDTValue + pd.to_timedelta(DistStartToPredDT, unit = TimeUnit)).isoformat()
                 DT_e = (ObsDTValue + pd.to_timedelta(DistEndToPredDT,   unit = TimeUnit)).isoformat()
-
+                
                 # get the idx_s and idx_e
                 idx_s = find_timelist_index(dates, DT_s)
                 idx_e = find_timelist_index(dates, DT_e)
+                
+
+                ############ TO COMMENT OUT
+                # print(dates[0], dates[-1], idx_s, idx_e)
+                # selected_dates = dates[idx_s: idx_e]
+                # print(selected_dates[0], selected_dates[-1])
+                ############
+                
                 # assert idx_s != idx_e
                     
                 # only for certain RecName, need to pay attention for the future new record type. 
@@ -502,7 +542,21 @@ class CaseObserverTransformer:
                     continue
                     # raise ValueError(f'No Information, save idx_s and idx_e: {idx_s}')
                 ######################################################
+                # print('length of ds_rec_p:', ds_rec_p)
                 ROds = ds_rec_p.select(range(idx_s, idx_e)) # R_{ij}^{ckpd, name, fld}
+                # print(ROds)
+                
+                ############ This could take a lot of time #############
+                # DT_s_selected, DT_e_selected = min(ROds[RecDT]), max(ROds[RecDT])
+                DT_s_selected, DT_e_selected = ROds[0][RecDT], ROds[-1][RecDT]
+                ######################################################  
+                DT_s_selected, DT_e_selected = DT_s_selected.isoformat(), DT_e_selected.isoformat()
+                
+                if not (DT_s <= DT_s_selected and  DT_e_selected <= DT_e):
+                    logger.warning(f'targeted range: {DT_s} - {DT_e}')
+                    logger.warning(f'selected range: {DT_s_selected} - {DT_e_selected}')
+                    raise ValueError('Error: the selected range is not in the targeted range.')
+                
                 
                 if RecObsInfo['run_fldtkn_on_the_fly'] == True:
                     # fldtkn_args = RecObsInfo['fldtkn_args']
@@ -609,6 +663,7 @@ class CaseObserverTransformer:
                 if len(overlap) == 0: continue
 
             # append it to ds_data_path.
+            logger.info(f'get pre-calcuated CO from: {ds_data_path}')
             Path_to_DS[ds_data_path] = ds
             
         # case 2.1: still no information
@@ -764,6 +819,9 @@ class CaseFeatureTransformer:
             elif casefeat_id in df_CF_info.index:
                 logger.debug('1st: load from old case feats')
                 casefeat_info = df_CF_info.loc[casefeat_id]
+                if len(casefeat_info) > 1:
+                    casefeat_info = casefeat_info.iloc[0]
+                    logger.warning(f'Warning: there are multiple casefeat_info for {CFName}: {casefeat_id}, select the first one.')
                 casefeat_idx_in_data = int(casefeat_info['casefeat_idx_in_data'])
                 CaseFeature = ds_CF_data[casefeat_idx_in_data]
                 casefeat_id_from_disk = CaseFeature.pop('casefeat_id')
@@ -907,7 +965,7 @@ class CaseFeatureTransformer:
             try:
                 ds = datasets.Dataset.load_from_disk(ds_data_path)
             except:
-                logger.warning(f'\nError in the folder, skip it and remove it: {ds_data_path}')
+                logger.warning(f'Error in the folder, skip it and remove it: {ds_data_path}')
                 os.remove(ds_data_path); continue 
             
             # fetch caseobs_id_from_disk from ds
@@ -919,12 +977,14 @@ class CaseFeatureTransformer:
                 if len(overlap) == 0: continue
 
             # append it to ds_data_path.
+            logger.info(f'get pre-calcuated CF from: {ds_data_path}')
             Path_to_DS[ds_data_path] = ds
             
         # case 2.1: still no information
         if len(Path_to_DS) == 0: return ds_CF_data_empty, df_CF_info_empty
     
         # case 2.2: concatenate the datasets and save to the disk
+        logger.info(f'the final size of the pre-calcuated CFs: {len(Path_to_DS)}')
         ds_CF_data = datasets.concatenate_datasets([v for _, v in Path_to_DS.items()])
         df_CF_info = ds_CF_data.select_columns(['casefeat_id']).to_pandas().reset_index()
         df_CF_info = df_CF_info.set_index('casefeat_id').rename(columns = {'index': 'casefeat_idx_in_data'})

@@ -9,6 +9,7 @@ import pandas as pd
 import logging
 import datasets
 from functools import reduce
+import pprint 
 
 logger = logging.getLogger(__name__)
 
@@ -194,7 +195,16 @@ def convert_variables_to_pystirng(string_variables = [],
         L.append(line)
         
     for i in iterative_variables:
-        line = f'{retrieve_name(i)} = {i}'
+        if type(i) == dict:
+            pretty_str = pprint.pformat(i, 
+                                indent=4, 
+                                width=100, 
+                                sort_dicts=False, 
+                                compact=True,)
+        else:
+            pretty_str = str(i)
+        # i = pretty_str
+        line = f'{retrieve_name(i)} = {pretty_str}'
         L.append(line)
         
     for i in fn_variables:

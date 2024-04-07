@@ -11,7 +11,7 @@ Ckpd_ObservationS = {
         'CkpdName': 'Bf24H',
         'DistStartToPredDT': -24,
         'DistEndToPredDT': 0.01,
-        'TimeUnit': 'H',
+        'TimeUnit': 'h',
         'StartIdx5Min': -288,
         'EndIdx5Min': 0
     },
@@ -19,7 +19,7 @@ Ckpd_ObservationS = {
         'CkpdName': 'Bf1M',
         'DistStartToPredDT': -24 * 30,
         'DistEndToPredDT': 0.01,
-        'TimeUnit': 'H',
+        'TimeUnit': 'h',
         'StartIdx5Min': -288 * 30,
         'EndIdx5Min': 0
     },
