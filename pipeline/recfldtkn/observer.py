@@ -96,13 +96,13 @@ def get_RecObsInfo_for_a_RecObsName(RecObsName,
                                     name_CasePhi,
                                     get_selected_columns, 
                                     cohort_args, 
-                                    Ckpd_ObservationS, 
+                                    ckpd_to_CkpdObsConfig, 
                                     record_to_ds_rec = {}, 
                                     record_to_ds_rec_info = {}):
     
     RootID = cohort_args['RootID']
     # print(f'\n======================== RecObsName: {RecObsName} ========================')
-    d = parse_RecObsName(RecObsName)
+    d = parse_RecObsName(RecObsName, ckpd_to_CkpdObsConfig)
     RecName = d['RecName']
     CkpdName = d['CkpdName']
     FldName = d['FldName']
@@ -155,7 +155,7 @@ def get_RecObsInfo_for_a_RecObsName(RecObsName,
         'rec_args': rec_args,
         'RecName': RecName, 
         'CkpdName': CkpdName, 
-        'CkpdInfo': Ckpd_ObservationS[CkpdName] if CkpdName in Ckpd_ObservationS else None,
+        'CkpdInfo': ckpd_to_CkpdObsConfig[CkpdName] if CkpdName in ckpd_to_CkpdObsConfig else None,
         'FldName': FldName,
         'FldTknName': FldTknName,
         'FldIdx2Tkn': fld_idx2tkn,
@@ -203,7 +203,7 @@ def get_CaseObsInfo_for_a_CaseObsName(CaseObsName,
                                                     name_CasePhi, 
                                                     get_selected_columns,
                                                     cohort_args, 
-                                                    cohort_args['Ckpd_ObservationS'], 
+                                                    cohort_args['ckpd_to_CkpdObsConfig'], 
                                                     record_to_ds_rec, 
                                                     record_to_ds_rec_info)
     
@@ -251,7 +251,7 @@ def get_CaseFeatInfo_for_a_CaseFeatName(name_CaseGamma,
     # COList_hash, name_CaseGamma = parse_CaseFeatName(CaseFeatName)
     co_to_COName, co_to_CONameInfo = convert_case_observations_to_co_to_observation(case_observations)
     COName_to_co = {v: k for k, v in co_to_COName.items()}
-    PipelineInfo = get_RecNameList_and_FldTknList(co_to_CONameInfo)
+    PipelineInfo = get_RecNameList_and_FldTknList(co_to_CONameInfo, cohort_args['ckpd_to_CkpdObsConfig'])
     COName_List = [CaseName for co, CaseName in co_to_COName.items()]
     CaseFeatName = convert_CONameList_to_CFName(COName_List, name_CaseGamma)
 
@@ -310,6 +310,7 @@ def get_fn_case_GammaFullInfo(Gamma_Config,
                                              CaseFeatInfo['fn_CaseGamma'], 
                                              CaseFeatInfo['CF_vocab'], 
                                              CaseFeatInfo['get_CF_id'],
+                                             base_config,
                                              CaseFeatInfo['CF_Folder'], 
                                              df_case_learning,
                                              use_CF_from_disk, 
@@ -327,6 +328,7 @@ class CaseObserverTransformer:
                  fn_CasePhi, 
                  CO_vocab, 
                  get_CO_id,
+                 cohort_args,
                  CO_Folder = None, 
                  df_case = None,
                  use_CO_from_disk = False):
@@ -342,11 +344,12 @@ class CaseObserverTransformer:
         self.CO_Folder_data = os.path.join(CO_Folder, 'data')    
         self.CO_Folder_vocab = os.path.join(CO_Folder, 'vocab.p')
         self.get_CO_id = get_CO_id
+        self.cohort_args = cohort_args
 
         # read the ds_CO_data and df_CO_info from the disk
         self.use_CO_from_disk = use_CO_from_disk
         if type(df_case) == pd.DataFrame:   
-            self.COids = list(set(df_case.apply(lambda x: get_CO_id(x, self.COName), axis = 1).tolist()))
+            self.COids = list(set(df_case.apply(lambda x: get_CO_id(x, self.COName, cohort_args), axis = 1).tolist()))
         else:
             self.COids = None 
         self.ds_CO_data, self.df_CO_info = self.load_COs_from_disk(self.CO_Folder_data, self.COids)
@@ -355,14 +358,14 @@ class CaseObserverTransformer:
         self.new_COs = {}  
         self.MAX_NEW_CASEOBS_CACHE_SIZE = 50000
 
-    def get_idx_to_CO_from_disk(self, COName, idx_to_examples, get_CO_id, ds_CO_data, df_CO_info):
+    def get_idx_to_CO_from_disk(self, COName, idx_to_examples, get_CO_id, ds_CO_data, df_CO_info, cohort_args):
 
         idx_to_examples_todo = {}
         idx_to_CO = {}
 
         for idx, case_example in idx_to_examples.items():
             
-            caseobs_id = get_CO_id(case_example, COName)
+            caseobs_id = get_CO_id(case_example, COName, cohort_args)
             
             if caseobs_id in self.new_COs:
                 logger.debug('1st: use cached new_calculated_caseobs')
@@ -459,7 +462,7 @@ class CaseObserverTransformer:
             for RecObsName, RecObsInfo in RecObsName_to_RecObsInfo.items():
                 # ROinfo = RecObsInfo
                 RecName = RecObsInfo['RecName']
-                RecDT = RecObsInfo['rec_args']['RecDT']
+                
                 df_rec_info = RecObsInfo['df_rec_info'] # R_i
                 ds_rec_p = RecName_to_REC_P[RecName][PIDValue] # R_i
 
@@ -475,6 +478,10 @@ class CaseObserverTransformer:
                     RO_to_ROds[RecObsName] = ds_rec_p
                     continue
                 
+
+                ########### safe checking ###########
+                # if 'CkpdInfo' in RecObsInfo:
+                # if 'dates'
                 CkpdInfo = RecObsInfo['CkpdInfo']
                 info_p = df_rec_info.loc[PIDValue]
                 dates = info_p['dates'] # <--- will this still take time?
@@ -496,6 +503,7 @@ class CaseObserverTransformer:
 
                 # we first select row, and then select columns to get faster speed.
                 # otherwise, 10x lower speed.
+                RecDT = RecObsInfo['rec_args']['RecDT']
                 assert dates[0] == ds_rec_p[0][RecDT].isoformat()
                 assert dates[-1] == ds_rec_p[-1][RecDT].isoformat()
                 
@@ -582,6 +590,7 @@ class CaseObserverTransformer:
         get_CO_id = self.get_CO_id
         ds_CO_data = self.ds_CO_data
         df_CO_info = self.df_CO_info
+        cohort_args = self.cohort_args
         
         # case_examples
         num_examples = len(case_examples[[i for i in case_examples.keys()][0]])
@@ -591,7 +600,8 @@ class CaseObserverTransformer:
                                                                        idx_to_examples, 
                                                                        get_CO_id, 
                                                                        ds_CO_data, 
-                                                                       df_CO_info)
+                                                                       df_CO_info, 
+                                                                       cohort_args)
         
             
         # one should consider how to save the caseobs_id here to really same time. 
@@ -600,7 +610,7 @@ class CaseObserverTransformer:
 
         for idx in idx_to_examples_todo:
             case_example = idx_to_examples_todo[idx]
-            caseobs_id = get_CO_id(case_example, COName)
+            caseobs_id = get_CO_id(case_example, COName, cohort_args)
             ROName_to_ROds = idx_to_ROName_to_ROds[idx]
 
             if caseobs_id in self.new_COs:
@@ -613,7 +623,8 @@ class CaseObserverTransformer:
                 CaseObservation = self.fn_CasePhi(case_example, 
                                                   ROName_to_ROds, 
                                                   ROName_to_ROInfo, 
-                                                  CO_vocab) 
+                                                  CO_vocab, 
+                                                  cohort_args) 
                 ##########################
                 self.new_COs[caseobs_id] = CaseObservation
 
@@ -753,6 +764,7 @@ class CaseFeatureTransformer:
                  fn_CaseGamma, 
                  CF_vocab, 
                  get_CF_id,
+                 cohort_args,
                  CF_Folder = None,
                  df_case = None,
                  use_CF_from_disk = False, 
@@ -773,12 +785,13 @@ class CaseFeatureTransformer:
         self.CF_Folder_data  = os.path.join(CF_Folder, 'data')    
         self.CF_Folder_vocab = os.path.join(CF_Folder, 'vocab.p')
         self.get_CF_id = get_CF_id
+        self.cohort_args = cohort_args
 
         # read the ds_CO_data and df_CO_info from the disk
         self.use_CF_from_disk = use_CF_from_disk
 
         if type(df_case) == pd.DataFrame:   
-            self.CFids = list(set(df_case.apply(lambda x: get_CF_id(x, self.CFName), axis = 1).tolist()))
+            self.CFids = list(set(df_case.apply(lambda x: get_CF_id(x, self.CFName, cohort_args), axis = 1).tolist()))
         else:
             self.CFids = None 
 
@@ -798,18 +811,19 @@ class CaseFeatureTransformer:
                                                     COInfo['fn_CasePhi'], 
                                                     COInfo['CO_vocab'], 
                                                     COInfo['get_CO_id'],
+                                                    cohort_args,
                                                     COInfo['CO_Folder'], 
                                                     df_case,
                                                     use_CO_from_disk)
             self.COName_to_FnCaseObsPhi[COName] = FnCaseObsPhi
 
-    def get_idx_to_CF_from_disk(self, CFName, idx_to_examples, get_CF_id, ds_CF_data, df_CF_info):
+    def get_idx_to_CF_from_disk(self, CFName, idx_to_examples, get_CF_id, ds_CF_data, df_CF_info, cohort_args):
 
         idx_to_examples_todo = {}
         idx_to_CF = {}
 
         for idx, case_example in idx_to_examples.items():
-            casefeat_id = get_CF_id(case_example, CFName)
+            casefeat_id = get_CF_id(case_example, CFName, cohort_args)
             
             if casefeat_id in self.new_CFs:
                 logger.debug('1st: use cached new_CFs')
@@ -889,6 +903,7 @@ class CaseFeatureTransformer:
         get_CF_id = self.get_CF_id
         ds_CF_data = self.ds_CF_data
         df_CF_info = self.df_CF_info
+        cohort_args = self.cohort_args
         
         # case_examples
         num_examples = len(case_examples[[i for i in case_examples.keys()][0]])
@@ -898,12 +913,13 @@ class CaseFeatureTransformer:
                                                                        idx_to_examples, 
                                                                        get_CF_id, 
                                                                        ds_CF_data, 
-                                                                       df_CF_info)
+                                                                       df_CF_info, 
+                                                                       cohort_args)
         
         # case_examples check whether it is in new_COs
         for idx in idx_to_examples_todo:
             case_example = idx_to_examples_todo[idx]
-            casefeat_id = get_CF_id(case_example, CFName)
+            casefeat_id = get_CF_id(case_example, CFName, cohort_args)
             if casefeat_id not in self.new_CFs: continue 
             logger.debug('2nd: use cached new_calculated_casefeats')
             CaseFeature = self.new_CFs[casefeat_id]
@@ -926,9 +942,9 @@ class CaseFeatureTransformer:
         for idx in idx_to_examples_todo:
             logger.debug('3rd: calculate new caseobs')
             case_example = idx_to_examples_todo[idx]
-            casefeat_id = get_CF_id(case_example, CFName)
+            casefeat_id = get_CF_id(case_example, CFName, cohort_args)
             ##########################
-            CaseFeature = self.fn_CaseGamma(case_example, co_to_COvocab, CF_vocab) 
+            CaseFeature = self.fn_CaseGamma(case_example, co_to_COvocab, CF_vocab, cohort_args) 
             ##########################
             self.new_CFs[casefeat_id] = CaseFeature
             idx_to_CF[idx] = CaseFeature

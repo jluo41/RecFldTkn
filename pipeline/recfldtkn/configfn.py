@@ -3,7 +3,7 @@ import json
 import yaml
 import logging
 import pandas as pd
-from .ckpd_obs import Ckpd_ObservationS
+# from .ckpd_obs import Ckpd_ObservationS
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format='[%(levelname)s:%(asctime)s:(%(filename)s@%(lineno)d %(name)s)]: %(message)s')
@@ -55,7 +55,7 @@ def load_cohort_args(recfldtkn_config_path, SPACE = None, use_inference = False)
         CohortConfig['FolderPath'] = os.path.join(SPACE['DATA_RAW'], CohortName)
         cohort_args['CohortInfo'][CohortName] = CohortConfig
 
-    cohort_args['Ckpd_ObservationS'] = Ckpd_ObservationS
+    # cohort_args['Ckpd_ObservationS'] = Ckpd_ObservationS
     return cohort_args
 
 def load_record_args(RecName, cohort_args, use_inference = False, recfldtkn_config_path = None):

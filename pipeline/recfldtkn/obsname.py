@@ -1,6 +1,7 @@
 import hashlib
 import base64
 
+
 def get_consistent_short_hash(input_data, length=10):
     # Ensure the input is in string form
     input_str = str(input_data)
@@ -14,7 +15,7 @@ def get_consistent_short_hash(input_data, length=10):
     short_hash = short_hash_base64[:length]
     return short_hash
 
-def parse_RecObsName(RecObsName):
+def parse_RecObsName(RecObsName, ckpd_to_CkpdObsConfig):
     # A RecObsName can be:
     #   1. RecName
     #   2. RecName-Ckpd
@@ -29,7 +30,8 @@ def parse_RecObsName(RecObsName):
 
     elif len(element_list) == 2:
         second_element = element_list[1]
-        if 'Af' in second_element or 'Bf' in second_element or 'In' in second_element:
+        # if 'Af' in second_element or 'Bf' in second_element or 'In' in second_element:
+        if second_element in ckpd_to_CkpdObsConfig: 
             d['RecName'] = element_list[0]
             d['CkpdName'] = element_list[1]
             d['FldName'] = None
@@ -67,9 +69,9 @@ def convert_CONameList_to_CFName(case_observations, CaseFeatTkn):
     CaseFeatName = 'cf.' + CaseFeatTkn + '_' + 'co.' + CO_list_hash
     return CaseFeatName
 
-def get_tokenizer_name_for_CaseObsName(CaseObsName):
+def get_tokenizer_name_for_CaseObsName(CaseObsName, ckpd_to_CkpdObsConfig):
     RecObsNames, CaseTkn = parse_CaseObsName(CaseObsName)
-    parsed_list = [parse_RecObsName(RecObsName) for RecObsName in RecObsNames]
+    parsed_list = [parse_RecObsName(RecObsName, ckpd_to_CkpdObsConfig) for RecObsName in RecObsNames]
     field_list = list(set([d['FldName'] for d in parsed_list if d['FldName'] is not None]))
     record_list = list(set([d['RecName'] for d in parsed_list]))
 
@@ -92,7 +94,7 @@ def convert_case_observations_to_co_to_observation(case_observations):
     return co_to_CaseObsName, co_to_CaseObsNameInfo
 
 
-def get_RecNameList_and_FldTknList(co_to_CaseObsNameInfo):
+def get_RecNameList_and_FldTknList(co_to_CaseObsNameInfo, ckpd_to_CkpdObsConfig):
     RecNameList_All = []
     CkpdNameList_All = []
     FldTknList_All = []
@@ -101,10 +103,11 @@ def get_RecNameList_and_FldTknList(co_to_CaseObsNameInfo):
     for co, CaseObsNameInfo in co_to_CaseObsNameInfo.items():
         RecObsName_List = CaseObsNameInfo['RecObsName_List']
         name_CasePhi = CaseObsNameInfo['name_CasePhi']
-        RecNameList = [parse_RecObsName(i)['RecName'] for i in RecObsName_List]
-        CkpdNameList = [parse_RecObsName(i)['CkpdName'] for i in RecObsName_List]
-        FldNameList = [parse_RecObsName(i)['RecName'] + '-' + parse_RecObsName(i)['FldName'] 
-                       for i in RecObsName_List if parse_RecObsName(i)['FldName'] is not None]
+        parsed_RecObsNames = [parse_RecObsName(i, ckpd_to_CkpdObsConfig) for i in RecObsName_List]
+        RecNameList = [i['RecName'] for i in parsed_RecObsNames]
+        CkpdNameList = [i['CkpdName'] for i in parsed_RecObsNames if 'CkpdName' in i]
+        FldNameList = [i['RecName'] + '-' + i['FldName'] 
+                       for i in parsed_RecObsNames if i['FldName'] is not None]
         
         RecNameList_All = RecNameList_All + [i for i in RecNameList if i is not None]
         CkpdNameList_All = CkpdNameList_All + [i for i in CkpdNameList if i is not None]

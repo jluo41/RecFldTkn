@@ -47,14 +47,22 @@ def fetch_casefilter_tools(FilterMethod, SPACE):
     tools['fn_case_filtering'] = fn_case_filtering
     return tools
 
-def fetch_entry_tools(entry_args, SPACE):
-    tools = {}
-    for entry_name, entry_method in entry_args.items():
-        pypath = os.path.join(SPACE['CODE_FN'], 'fn_learning', f'{entry_method}.py')
-        module = load_module_variables(pypath)
-        # print([i for i in module.MetaDict])
-        tools[entry_name] = module.MetaDict['fn_' + entry_name]
-    return tools
+# def fetch_entry_tools(entry_args, SPACE):
+#     tools = {}
+#     for entry_name, entry_method in entry_args.items():
+#         pypath = os.path.join(SPACE['CODE_FN'], 'fn_learning', f'{entry_method}.py')
+#         module = load_module_variables(pypath)
+#         # print([i for i in module.MetaDict])
+#         tools[entry_name] = module.MetaDict['fn_' + entry_name]
+#     return tools
+
+
+def fetch_entry_tools(entry_method, SPACE):
+    pypath = os.path.join(SPACE['CODE_FN'], 'fn_learning', f'{entry_method}.py')
+    module = load_module_variables(pypath)
+    fn_entry_method_for_finaldata = module.MetaDict['fn_entry_method_for_finaldata']
+    return fn_entry_method_for_finaldata
+
 
 def fetch_fldtkn_phi_tools(RecFldTkn, fldtkn_args, SPACE):
 
@@ -156,7 +164,27 @@ def load_ds_rec_and_info(record_name, cohort_args, cohort_label_list = None):
     if len(linfo) == 0:
         ds_rec_info = None
     else:
-        ds_rec_info = datasets.concatenate_datasets(linfo)
+        ########################## BIGGEST BUG EVER ############################
+        # ds_rec_info = datasets.concatenate_datasets(linfo)
+        ########################################################################
+
+        assert len(linfo) == len(l)
+        num_rec = 0
+        num_ptt = 0
+        linfo_new = []
+        for idx, ds_rec_info in enumerate(linfo):
+            
+            df_rec_info = ds_rec_info.to_pandas()   
+            df_rec_info['PID_idx'] = num_ptt + df_rec_info['PID_idx']
+            df_rec_info['interval'] = df_rec_info['interval'].apply(lambda x: [i + num_rec for i in x])
+            ds_rec_info = datasets.Dataset.from_pandas(df_rec_info)
+            linfo_new.append(ds_rec_info)
+
+            num_rec = num_rec + len(l[idx])
+            num_ptt = num_ptt + len(ds_rec_info)
+        
+        ds_rec_info = datasets.concatenate_datasets(linfo_new)
+
     return ds_rec, ds_rec_info
 
 
