@@ -54,75 +54,58 @@ def pipeline_to_generate_dfcase_and_dataset(RecName_to_dsRec,
                                             # proc sets
                                             CASE_TAGGING_PROC_CONFIG,
                                             CASE_FIEDLING_PROC_CONFIG,
-                                            SAVE_DF_CASE,
-                                            SAVE_DS_DATA,
+                                            
+                                            SAVE_DF_CASE = False,
+                                            SAVE_DS_DATA = False,
+                                            
+                                            LOAD_DF_CASE = False, 
+                                            LOAD_DS_DATA = False, 
+
+                                            RANDOM_SAMPLE = None,
+                                            SAVE_TRIGGER_DF = True,
                                             ):
     
+    results = {}
     
+    # =========================== Part 0: df_case ===========================
+
+
     logger.info(f'-------------- (0) RecName_to_dsRec: {[i for i in RecName_to_dsRec]} --------------')
     # RecName_to_dsRec; RecName_to_dsRecInfo
     
-    
 
-    
     logger.info(f'-------------- (1) TriggerCaseMethod: {TriggerCaseMethod} --------------')
     Trigger_Tools = fetch_trigger_tools(TriggerCaseMethod, SPACE)
     case_id_columns = Trigger_Tools['case_id_columns']
     cohort_args['case_id_columns'] = case_id_columns
 
-    
 
-
-    
     logger.info(f'-------------- (2) InputCaseSetName: {InputCaseSetName} --------------')
     InputCaseSetName, df_case = get_ds_case_to_process(InputCaseSetName, 
-                                                       cohort_label_list, 
-                                                       TriggerCaseMethod, 
-                                                       cohort_args, 
-                                                       SPACE, 
-                                                       RecName_to_dsRec, 
-                                                       RecName_to_dsRecInfo)
+                                                        cohort_label_list, 
+                                                        TriggerCaseMethod, 
+                                                        cohort_args, 
+                                                        SPACE, 
+                                                        RecName_to_dsRec, 
+                                                        RecName_to_dsRecInfo, 
+                                                        SAVE_TRIGGER_DF,
+                                                        )
     logger.info(f'InputCaseSetName: {InputCaseSetName}')
     logger.info(f'df_case shape: {df_case.shape}')
+    
+    results['case_id_columns'] = case_id_columns
+
+    
+    # =========================== Part 1: df_case ===========================
+
     FinalOutCaseSetName = InputCaseSetName
-
-
-
-
-    
-    logger.info(f'-------------- (3) TagMethod_List: {TagMethod_List} --------------')
     if len(TagMethod_List) > 0:
-        OutputCaseSetName, df_case = process_df_tagging_tasks_in_chunks(df_case, cohort_label_list, case_id_columns, 
-                                                                        InputCaseSetName, 
-                                                                        TagMethod_List, cf_to_QueryCaseFeatConfig, 
-                                                                        cohort_args, SPACE, 
-                                                                        RecName_to_dsRec, RecName_to_dsRecInfo,
-                                                                        **CASE_TAGGING_PROC_CONFIG)
-        logger.info(f'df_case shape: {df_case.shape}')
         FinalOutCaseSetName = FinalOutCaseSetName + '-' + '.'.join(TagMethod_List)
-
-    
-
-
-
-
-    logger.info(f'-------------- (4) FilterMethod_List: {FilterMethod_List} --------------')
     if len(FilterMethod_List) > 0:
-        # logger.info(f'---------- before filtering: {df_case.shape} --------------')
-        df_case = process_df_filtering_tasks(df_case, FilterMethod_List, SPACE)
-        # logger.info(f'---------- after filtering: {df_case.shape} --------------')
-        logger.info(f'df_case shape: {df_case.shape}')
         FinalOutCaseSetName = FinalOutCaseSetName + '-' + '.'.join(FilterMethod_List)
-
-
-
-
-    logger.info(f'-------------- (5) SplitDict: {SplitDict} --------------')
     if len(SplitDict) > 0:
         SplitDict['RootID'] = cohort_args['RootID']
         SplitDict['ObsDT'] = cohort_args['ObsDTName']
-        df_case = assign_caseSplitTag_to_dsCase(df_case,  **SplitDict)
-        
         RANDOM_SEED = SplitDict['RANDOM_SEED']
         downsample_ratio = SplitDict['downsample_ratio']
         out_ratio = SplitDict['out_ratio']
@@ -131,6 +114,55 @@ def pipeline_to_generate_dfcase_and_dataset(RecName_to_dsRec,
         SplitMethod = f'rs{RANDOM_SEED}.ds{downsample_ratio}.out{out_ratio}ts{test_ratio}vd{valid_ratio}' 
         FinalOutCaseSetName = FinalOutCaseSetName + '-' + SplitMethod
 
+    path = os.path.join(SPACE['DATA_CaseSet'], FinalOutCaseSetName + '.p')
+    # print(os.getcwd())
+    # print(path)
+    # print(os.path.exists(path))
+    # return None 
+    logger.info(f'ds_case path: {path}')
+    if os.path.exists(path) and LOAD_DF_CASE == True:
+        logger.info(f'-------------- load df_case from DATA_CASE --------------')
+        logger.info(f'load df_case from: {path}')
+        df_case = pd.read_pickle(path)
+        PROC_DF_CASE = False
+    else: 
+        logger.info(f'-------------- execute processing df_case --------------')
+        PROC_DF_CASE = True
+
+
+
+    if PROC_DF_CASE: 
+        if RANDOM_SAMPLE is not None:
+            df_case = df_case.sample(RANDOM_SAMPLE, random_state = 42).reset_index(drop = True)
+            logger.info(f'randomly selected df_case shape: {df_case.shape}')
+
+
+
+        logger.info(f'-------------- (1.a) TagMethod_List: {TagMethod_List} --------------')
+        if len(TagMethod_List) > 0:
+            OutputCaseSetName, df_case = process_df_tagging_tasks_in_chunks(df_case, cohort_label_list, case_id_columns, 
+                                                                            InputCaseSetName, 
+                                                                            TagMethod_List, cf_to_QueryCaseFeatConfig, 
+                                                                            cohort_args, SPACE, 
+                                                                            RecName_to_dsRec, RecName_to_dsRecInfo,
+                                                                            **CASE_TAGGING_PROC_CONFIG)
+            logger.info(f'df_case shape: {df_case.shape}')
+            
+
+
+        logger.info(f'-------------- (1.b) FilterMethod_List: {FilterMethod_List} --------------')
+        if len(FilterMethod_List) > 0:
+            # logger.info(f'---------- before filtering: {df_case.shape} --------------')
+            df_case = process_df_filtering_tasks(df_case, FilterMethod_List, SPACE)
+            # logger.info(f'---------- after filtering: {df_case.shape} --------------')
+            logger.info(f'df_case shape: {df_case.shape}')
+            
+
+        logger.info(f'-------------- (1.c) SplitDict: {SplitDict} --------------')
+        if len(SplitDict) > 0:
+            SplitDict['RootID'] = cohort_args['RootID']
+            SplitDict['ObsDT'] = cohort_args['ObsDTName']
+            df_case = assign_caseSplitTag_to_dsCase(df_case,  **SplitDict)
 
 
     if SAVE_DF_CASE == True:
@@ -140,42 +172,86 @@ def pipeline_to_generate_dfcase_and_dataset(RecName_to_dsRec,
         df_case.to_pickle(path)
 
 
-    logger.info(f'-------------- (6) Dataset Split: {CaseSplitConfig} --------------')
-    ds_case_dict = {}
-    if len(CaseSplitConfig) > 0:
-        TrainSetName = CaseSplitConfig['TrainSetName']
-        EvalSetNames = CaseSplitConfig['EvalSetNames']
+    results['FinalOutCaseSetName'] = FinalOutCaseSetName
+    results['df_case'] = df_case.copy()
+
+
+    # =========================== Part 2: ds_data ===========================
+    logger.info(f'-------------- SAVE df_case to DATA_CASE --------------')
+    dataset_name = '.'.join(CaseFeat_List)  
+    dataset_path = os.path.join(SPACE['DATA_TASK'], FinalOutCaseSetName, dataset_name)
+
+    # print(os.getcwd())
+    # print(dataset_path)
+    # print(os.path.exists(dataset_path))
+    # return None
+
+    if os.path.exists(dataset_path) and LOAD_DS_DATA == True:
+        logger.info(f'-------------- load ds_case from DATA_TASK --------------')
+        
+        data_path = dataset_path + '/data'
+        logger.info(f'load ds_case from: {data_path}')
+        ds_case_cf_dict = datasets.DatasetDict.load_from_disk(data_path)
+
+        vocab_path = dataset_path + '/vocab'
+        with open(vocab_path, 'rb') as f:
+            cf_to_CFVocab = pickle.load(f)
+
+        PROC_DS_DATA = False
+
+    else:
+        logger.info(f'-------------- execute processing ds_case --------------')
+        PROC_DS_DATA = True
+
+
+
+    if PROC_DS_DATA:
+        logger.info(f'-------------- (2.a) Dataset Split: {CaseSplitConfig} --------------')
+        ds_case_dict = {}
+
         case_id_columns = Trigger_Tools['case_id_columns']
-        SubGroupFilterMethod = {}
-        d = {}
-        for SetName in [TrainSetName] + EvalSetNames:
-            df_set = get_dfset_from_SetName(df_case, SetName, case_id_columns, SubGroupFilterMethod)
-            ds_set = datasets.Dataset.from_pandas(df_set)
-            print(SetName, len(df_set))
-            d[SetName] = ds_set
-        ds_case_dict = datasets.DatasetDict(d)
+
+        if len(CaseSplitConfig) > 0:
+            df_case_learning = df_case.copy()
+            TrainSetName = CaseSplitConfig['TrainSetName']
+            EvalSetNames = CaseSplitConfig['EvalSetNames']
+            
+            SubGroupFilterMethod = {}
+            d = {}
+            for SetName in [TrainSetName] + EvalSetNames:
+                df_set = get_dfset_from_SetName(df_case_learning, SetName, case_id_columns, SubGroupFilterMethod)
+                ds_set = datasets.Dataset.from_pandas(df_set)
+                d[SetName] = ds_set
+            ds_case_dict = datasets.DatasetDict(d)
+
+        else:
+            d = {'inference': datasets.Dataset.from_pandas(df_case[case_id_columns].reset_index(drop = True))}
+            ds_case_dict = datasets.DatasetDict(d)
+        
         logger.info(f'ds_case_dict: {ds_case_dict}')
     
 
 
-    logger.info(f'-------------- (7) Dataset Case Fielding: {CaseFeat_List} --------------')
-    ds_case_cf_dict = {}
-    if len(CaseFeat_List) > 0:
-        for split, ds in ds_case_dict.items():
-            df_case = ds.to_pandas()
-            cf_to_CaseFeatInfo, ds_case = process_df_casefeat_tasks_in_chunks(df_case, 
-                                                                              cohort_label_list,
-                                                                              case_id_columns,
-                                                                              InputCaseSetName, 
-                                                                              CaseFeat_List, 
-                                                                              cf_to_CaseFeatConfig, 
-                                                                              cohort_args,
-                                                                              SPACE, 
-                                                                              RecName_to_dsRec, 
-                                                                              RecName_to_dsRecInfo,
-                                                                              **CASE_FIEDLING_PROC_CONFIG)
-            
-            ds_case_cf_dict[split] = ds_case
+        logger.info(f'-------------- (2.b) Dataset Case Fielding: {CaseFeat_List} --------------')
+        ds_case_cf_dict = {}
+        cf_to_CFVocab = {}
+        if len(CaseFeat_List) > 0:
+            for split, ds in ds_case_dict.items():
+                df_case_neat = ds.to_pandas()
+                cf_to_CaseFeatInfo, df_case_neat = process_df_casefeat_tasks_in_chunks(df_case_neat, 
+                                                                                cohort_label_list,
+                                                                                case_id_columns,
+                                                                                InputCaseSetName, 
+                                                                                CaseFeat_List, 
+                                                                                cf_to_CaseFeatConfig, 
+                                                                                cohort_args,
+                                                                                SPACE, 
+                                                                                RecName_to_dsRec, 
+                                                                                RecName_to_dsRecInfo,
+                                                                                **CASE_FIEDLING_PROC_CONFIG)
+                
+                ds_case_cf_dict[split] = df_case_neat
+            cf_to_CFVocab = {cf: Info['CF_vocab'] for cf, Info in cf_to_CaseFeatInfo.items()}
 
 
     if SAVE_DS_DATA == True and len(ds_case_cf_dict) > 0:
@@ -189,19 +265,23 @@ def pipeline_to_generate_dfcase_and_dataset(RecName_to_dsRec,
         ds_case_cf_dict = datasets.DatasetDict(ds_case_cf_dict) 
         ds_case_cf_dict.save_to_disk(data_path)
         
-        # vocab 
-        cf_to_CFVocab = {cf: Info['CF_vocab'] for cf, Info in cf_to_CaseFeatInfo.items()}
+        # vocab
         vocab_path = dataset_path + '/vocab'
         logger.info(f'vocab_path: {vocab_path}')
         with open(vocab_path, 'wb') as f:
             pickle.dump(cf_to_CFVocab, f)
 
-    results = {
-        'df_case': df_case,
-        'ds_case_dict': ds_case_dict,
-        'ds_case_cf_dict': ds_case_cf_dict,
-    } 
+    results['cf_to_CFVocab'] = cf_to_CFVocab
+    results['ds_case_cf_dict'] = ds_case_cf_dict
+    logger.info(ds_case_cf_dict)
+    logger.info(f'-------------- Done --------------')  
     return results
+
+
+
+
+
+
 
 
 

@@ -40,15 +40,15 @@ def get_tkn_value(x, tkn_id, ids, wgts):
         return 0
     
 
-def load_complete_PipelineInfo(datapoint_args, cohort_config, use_inference):
+def load_complete_PipelineInfo(cf_to_CaseFeatConfig, ckpd_to_CkpdObsConfig, cohort_config, use_inference):
 
     case_observations_total = []
-    for k, v in datapoint_args.items():
+    for k, v in cf_to_CaseFeatConfig.items():
         if use_inference == True and 'Output' in k: continue 
         case_observations_total = case_observations_total + v['case_observations']
 
     _, co_to_CaseObsNameInfo = convert_case_observations_to_co_to_observation(case_observations_total)
-    PipelineInfo = get_RecNameList_and_FldTknList(co_to_CaseObsNameInfo)
+    PipelineInfo = get_RecNameList_and_FldTknList(co_to_CaseObsNameInfo, ckpd_to_CkpdObsConfig)
     PipelineInfo['FldTknList'] = [i+'Tkn' for i in PipelineInfo['FldTknList']]
 
     # 3. get record_sequence
@@ -73,7 +73,8 @@ def get_ds_case_to_process(InputCaseSetName,
                            cohort_config, 
                            SPACE,
                            RecName_to_dsRec = {},
-                           RecName_to_dsRecInfo = {}):
+                           RecName_to_dsRecInfo = {},
+                           SAVE_TRIGGER_DF = True):
     '''
         this function is designed to be used in the training pipeline only.
         We only want to get a ds_case to tag, filter, split (optional), training, and inference. 
@@ -129,6 +130,8 @@ def get_ds_case_to_process(InputCaseSetName,
         
         # ds_rec, _ = load_ds_rec_and_info(TriggerRecName, cohort_config, cohort_label_list)
         df_case = convert_TriggerEvent_to_Caseset(ds_rec, case_id_columns, special_columns, cohort_config)
+
+    if SAVE_TRIGGER_DF == True:
         InputCaseFile = InputCaseFolder + '.p'
         df_case.to_pickle(InputCaseFile)
     # print(df_case.shape)
@@ -281,7 +284,12 @@ def process_df_tagging_tasks(df_case,
             if 'InfoRecName' in MetaDict:
                 # print('error')
                 InfoRecName, subgroup_columns, fn_case_tagging = module.InfoRecName, module.subgroup_columns, module.fn_case_tagging
-                ds_info, _ = load_ds_rec_and_info(InfoRecName, cohort_config, cohort_label_list)
+
+                if InfoRecName in RecName_to_dsRec:
+                    ds_info = RecName_to_dsRec[InfoRecName]
+                else:
+                    ds_info, _ = load_ds_rec_and_info(InfoRecName, cohort_config, cohort_label_list)
+
                 logger.info(f'ds_info is {InfoRecName}: {ds_info}')
                 df_case = fn_case_tagging(df_case, ds_info, subgroup_columns, cohort_config)
             elif 'fn_case_tagging_on_casefeat' in MetaDict:
