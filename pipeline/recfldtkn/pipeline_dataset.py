@@ -163,12 +163,14 @@ def pipeline_to_generate_dfcase_and_dataset(RecName_to_dsRec,
             SplitDict['RootID'] = cohort_args['RootID']
             SplitDict['ObsDT'] = cohort_args['ObsDTName']
             df_case = assign_caseSplitTag_to_dsCase(df_case,  **SplitDict)
+            logger.info(f'df_case shape: {df_case.shape}')
 
 
     if SAVE_DF_CASE == True:
         logger.info(f'-------------- SAVE df_case to DATA_CASE --------------')
         path = os.path.join(SPACE['DATA_CaseSet'], FinalOutCaseSetName + '.p')
         logger.info(f'save df_case to: {path}')
+        logger.info(f'df_case shape: {df_case.shape}')
         df_case.to_pickle(path)
 
 
@@ -228,7 +230,7 @@ def pipeline_to_generate_dfcase_and_dataset(RecName_to_dsRec,
             d = {'inference': datasets.Dataset.from_pandas(df_case[case_id_columns].reset_index(drop = True))}
             ds_case_dict = datasets.DatasetDict(d)
         
-        logger.info(f'ds_case_dict: {ds_case_dict}')
+        # logger.info(f'ds_case_dict: {ds_case_dict}')
     
 
 

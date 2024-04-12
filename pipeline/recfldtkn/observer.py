@@ -690,10 +690,12 @@ class CaseObserverTransformer:
         if CO_Folder_data is None: CO_Folder_data = self.CO_Folder_data
         
         if len(self.new_COs) == 0:
-            logger.info('No new calculated caseobs'); self.new_COs = {}; return None 
+            # logger.info('No new calculated caseobs'); 
+            self.new_COs = {}; return None 
         
         if self.use_CO_from_disk == False:
-            logger.info('use_CO_from_disk is false and empty new_COs'); self.new_COs = {}; return None
+            # logger.info('use_CO_from_disk is false and empty new_COs'); 
+            self.new_COs = {}; return None
 
         # get the new data and information
         df_CO_new = pd.DataFrame([add_key_return_dict(v, 'caseobs_id', k) for k, v  in self.new_COs.items()])
@@ -1010,10 +1012,12 @@ class CaseFeatureTransformer:
         if CF_Folder_data is None: CF_Folder_data = self.CF_Folder_data
 
         if len(self.new_CFs) == 0:
-            logger.info('No new calculated casefeat'); self.new_CFs = {}; return None 
+            # logger.info('No new calculated casefeat'); 
+            self.new_CFs = {}; return None 
 
         if self.use_CF_from_disk == False:
-            logger.info('use_CF_from_disk is false and empty new_CFs'); self.new_CFs = {}; return None
+            # logger.info('use_CF_from_disk is false and empty new_CFs'); 
+            self.new_CFs = {}; return None
 
         # get the new data and information
         df_CF_new = pd.DataFrame([add_key_return_dict(v, 'casefeat_id', k) for k, v  in self.new_CFs.items()])

@@ -80,41 +80,7 @@ def get_ds_case_to_process(InputCaseSetName,
         We only want to get a ds_case to tag, filter, split (optional), training, and inference. 
     '''
     if InputCaseSetName is None: 
-        COHORT = 'C' + '.'.join([str(i) for i in cohort_label_list])
-        TRIGGER = TriggerCaseMethod
-        InputCaseSetName = '-'.join([COHORT, TRIGGER])
         
-    InputCaseFolder = os.path.join(SPACE['DATA_CaseSet'], InputCaseSetName)
-    InputCaseFile = InputCaseFolder + '.p'
-
-        
-    if os.path.exists(InputCaseFolder):
-        assert os.path.isdir(InputCaseFolder)
-        L = []
-        if 'TaggingSize' in InputCaseFolder:
-            tag_method_list = sorted(os.listdir(InputCaseFolder))
-            for tag_method in tag_method_list:
-                file_list = sorted(os.listdir(os.path.join(InputCaseFolder, tag_method)))
-                df_case_tag = pd.concat([pd.read_pickle(os.path.join(InputCaseFolder, tag_method, f)) 
-                                        for f in file_list])
-                df_case_tag = df_case_tag.reset_index(drop = True)
-                L.append(df_case_tag)
-            pypath = os.path.join(cohort_config['trigger_pyfolder'], f'{TriggerCaseMethod}.py')
-            module = load_module_variables(pypath)
-            case_id_columns = module.case_id_columns
-            df_case = L[0]
-            for df_case_tag in L[1:]:
-                assert len(df_case) == len(df_case_tag)
-                columns = [i for i in df_case_tag.columns if i not in df_case.columns]
-                df_case = pd.merge(df_case, df_case_tag[case_id_columns + columns], on=case_id_columns)
-        else:
-            file_list = sorted(os.listdir(InputCaseFolder))
-            df_case = pd.concat([pd.read_pickle(os.path.join(InputCaseFolder, f)) for f in file_list])
-
-    elif os.path.exists(InputCaseFile):
-        assert os.path.exists(InputCaseFile)
-        df_case = pd.read_pickle(InputCaseFile)
-    else: 
         ################## get df_case to tag ##################
         # cohort_config = load_cohort_args(recfldtkn_config_path, SPACE)
         Trigger_Tools = fetch_trigger_tools(TriggerCaseMethod, SPACE)
@@ -128,13 +94,52 @@ def get_ds_case_to_process(InputCaseSetName,
         else:
             ds_rec, _ = load_ds_rec_and_info(TriggerRecName, cohort_config, cohort_label_list)
         
-        # ds_rec, _ = load_ds_rec_and_info(TriggerRecName, cohort_config, cohort_label_list)
         df_case = convert_TriggerEvent_to_Caseset(ds_rec, case_id_columns, special_columns, cohort_config)
-
-    if SAVE_TRIGGER_DF == True:
+        
+        df_case = df_case.sort_values(case_id_columns).reset_index(drop = True)
+        
+        COHORT = 'C' + '.'.join([str(i) for i in cohort_label_list])
+        TRIGGER = TriggerCaseMethod
+        InputCaseSetName = '-'.join([COHORT, TRIGGER, 'sz' + str(len(df_case))])
+        InputCaseFolder = os.path.join(SPACE['DATA_CaseSet'], InputCaseSetName)
+        if SAVE_TRIGGER_DF == True:
+            InputCaseFile = InputCaseFolder + '.p'
+            df_case.to_pickle(InputCaseFile)
+            
+    else:
+        InputCaseFolder = os.path.join(SPACE['DATA_CaseSet'], InputCaseSetName)
         InputCaseFile = InputCaseFolder + '.p'
-        df_case.to_pickle(InputCaseFile)
-    # print(df_case.shape)
+
+        if os.path.exists(InputCaseFile):
+            df_case = pd.read_pickle(InputCaseFile)
+            
+            
+        elif os.path.exists(InputCaseFolder):
+            assert os.path.isdir(InputCaseFolder)
+            L = []
+            if 'TaggingSize' in InputCaseFolder:
+                tag_method_list = sorted(os.listdir(InputCaseFolder))
+                for tag_method in tag_method_list:
+                    file_list = sorted(os.listdir(os.path.join(InputCaseFolder, tag_method)))
+                    df_case_tag = pd.concat([pd.read_pickle(os.path.join(InputCaseFolder, tag_method, f)) 
+                                            for f in file_list])
+                    df_case_tag = df_case_tag.reset_index(drop = True)
+                    L.append(df_case_tag)
+                pypath = os.path.join(cohort_config['trigger_pyfolder'], f'{TriggerCaseMethod}.py')
+                module = load_module_variables(pypath)
+                case_id_columns = module.case_id_columns
+                df_case = L[0]
+                for df_case_tag in L[1:]:
+                    assert len(df_case) == len(df_case_tag)
+                    columns = [i for i in df_case_tag.columns if i not in df_case.columns]
+                    df_case = pd.merge(df_case, df_case_tag[case_id_columns + columns], on=case_id_columns)
+            else:
+                file_list = sorted(os.listdir(InputCaseFolder))
+                df_case = pd.concat([pd.read_pickle(os.path.join(InputCaseFolder, f)) for f in file_list])
+            
+        else: 
+            raise ValueError(f'No such file or directory: {InputCaseFolder} or {InputCaseFile}')
+        
     return InputCaseSetName, df_case
     
 
@@ -239,6 +244,7 @@ def process_df_tagging_tasks(df_case,
             # print(fullfilepath)
             # print(os.path.exists(fullfilepath))
             if os.path.exists(fullfilepath): 
+                logger.info(f'loading {OutputCaseSetName} from {fullfilepath} -----')
                 df_case_new = pd.read_pickle(fullfilepath) 
                 columns = [i for i in df_case_new.columns if i not in df_case.columns]
                 df_case = pd.merge(df_case, df_case_new[case_id_columns + columns], on=case_id_columns)
@@ -299,6 +305,13 @@ def process_df_tagging_tasks(df_case,
                 raise ValueError('No fn_case_tagging_on_casefeat or InfoRecName in the module')
             
         if save_to_pickle == True:
+            
+            fullfolderpath = os.path.dirname(fullfilepath)
+            if not os.path.exists(fullfolderpath): 
+                print('\n\n', fullfolderpath)
+                os.makedirs(fullfolderpath)
+                
+            logger.info(f'saving {OutputCaseSetName} to {fullfilepath} -----')
             df_case.to_pickle(fullfilepath)
 
     return OutputCaseSetName, df_case
@@ -313,27 +326,33 @@ def _process_chunk_tagging(chunk_id, df_case, chunk_size,
     end_idx = min((chunk_id + 1) * chunk_size, len(df_case))
     df_case_chunk = df_case.iloc[start_idx:end_idx].reset_index(drop=True)
     # print(f'chunk_id: {chunk_id}, start_idx: {start_idx}, end_idx: {end_idx}')
-    _, df_case_chunk_tagged = process_df_tagging_tasks(
-        df_case_chunk, 
-        cohort_label_list,
-        case_id_columns,
-        InputCaseSetName, 
-        TagMethod_List, 
-        cf_to_QueryCaseFeatConfig,  
-        cohort_config,
-        SPACE, 
-        RecName_to_dsRec, 
-        RecName_to_dsRecInfo,
-        use_CF_from_disk, 
-        use_CO_from_disk,
-        chunk_id, 
-        start_idx, 
-        end_idx, 
-        chunk_size,
-        save_to_pickle,
-    )
-    return df_case_chunk_tagged
-
+    
+    
+    try:
+        _, df_case_chunk_tagged = process_df_tagging_tasks(
+            df_case_chunk, 
+            cohort_label_list,
+            case_id_columns,
+            InputCaseSetName, 
+            TagMethod_List, 
+            cf_to_QueryCaseFeatConfig,  
+            cohort_config,
+            SPACE, 
+            RecName_to_dsRec, 
+            RecName_to_dsRecInfo,
+            use_CF_from_disk, 
+            use_CO_from_disk,
+            chunk_id, 
+            start_idx, 
+            end_idx, 
+            chunk_size,
+            save_to_pickle,
+        )
+        return df_case_chunk_tagged
+    except Exception as e:
+        # logger.error(f"Exception in main processing loop: {e}")
+        logger.error(f"Exception in chunk {chunk_id}: {e}")
+        return None
 
 def process_df_tagging_tasks_in_chunks(df_case, 
                                        cohort_label_list,
@@ -354,12 +373,13 @@ def process_df_tagging_tasks_in_chunks(df_case,
                                        num_processors = 0):
     
     # --------------- get the tagging method name ---------------
-    OutputCaseSetName = '-'.join([InputCaseSetName, 'Tagging'])
-    Folder = os.path.join(SPACE['DATA_CaseSet'], OutputCaseSetName + f'Size{chunk_size}')
+    # OutputCaseSetName = '-'.join([InputCaseSetName, 'Tagging'])
+    # Folder = os.path.join(SPACE['DATA_CaseSet'], OutputCaseSetName + f'Size{chunk_size}')
     
     # --------------- process tagging tasks ---------------
     if end_chunk_id is None: end_chunk_id = len(df_case) // chunk_size + 1
     chunk_id_list = range(start_chunk_id, end_chunk_id)
+    logger.info(f'chunk_id_list: {chunk_id_list}')
 
 
 
@@ -378,8 +398,19 @@ def process_df_tagging_tasks_in_chunks(df_case,
                 
                 for chunk_id in chunk_id_list]
 
-            for future in as_completed(futures):
-                df_case_chunk_tagged_list.append(future.result())
+            for idx, future in enumerate(as_completed(futures)):
+                chunk_id = chunk_id_list[idx]
+                try:
+                    result = future.result()
+                    if result is not None:
+                        logger.info(f'chunk_id: {chunk_id}, df_case_chunk_tagged: {result.shape}')
+                        df_case_chunk_tagged_list.append(result)
+                    else:
+                        logger.error(f"Error processing chunk {chunk_id}")
+                    # df_case_chunk_tagged_list.append(future.result())
+                except Exception as e:
+                    logger.error(f"Exception in main processing loop: {e}")
+
 
     else:
         for chunk_id in chunk_id_list:
@@ -390,11 +421,12 @@ def process_df_tagging_tasks_in_chunks(df_case,
                                         InputCaseSetName, TagMethod_List, cf_to_QueryCaseFeatConfig, cohort_config,
                                         SPACE, RecName_to_dsRec, RecName_to_dsRecInfo, 
                                         use_CF_from_disk, use_CO_from_disk, save_to_pickle)
+            logger.info(f'chunk_id: {chunk_id}, df_case_chunk_tagged: {df_case_chunk_tagged.shape}')
             df_case_chunk_tagged_list.append(df_case_chunk_tagged)
 
     df_case_tagged_final = pd.concat(df_case_chunk_tagged_list, axis = 0).reset_index(drop = True)
-    OutputCaseSetName_final = '-'.join([InputCaseSetName, 't.'+'.'.join(TagMethod_List)])
-    return OutputCaseSetName_final, df_case_tagged_final
+    # OutputCaseSetName_final = '-'.join([InputCaseSetName, 't.'+'.'.join(TagMethod_List)])
+    return InputCaseSetName, df_case_tagged_final
 
 
 ######### casefeat tasks #########
