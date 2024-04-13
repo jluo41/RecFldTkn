@@ -1,13 +1,7 @@
 import os
 import sys 
 import logging
-# import pickle 
-# import pandas as pd
-# from datetime import datetime 
-# from pprint import pprint 
-
-# import datasets
-# from datasets.fingerprint import Hasher
+import argparse
 
 # WorkSpace
 KEY = 'WorkSpace'; WORKSPACE_PATH = os.getcwd().split(KEY)[0] + KEY; print(WORKSPACE_PATH)
@@ -18,25 +12,6 @@ sys.path.append(WORKSPACE_PATH)
 from proj_space import SPACE
 SPACE['WORKSPACE_PATH'] = WORKSPACE_PATH
 sys.path.append(SPACE['CODE_FN'])
-
-# Available Packages
-
-# from recfldtkn.pipeline_dataset import process_df_tagging_tasks_in_chunks
-
-# from recfldtkn.loadtools import load_ds_rec_and_info
-# from recfldtkn.configfn import load_cohort_args, load_record_args
-# from recfldtkn.loadtools import fetch_trigger_tools
-
-# from recfldtkn.observer import get_CaseFeatInfo_for_a_CaseFeatName
-# from recfldtkn.observer import CaseFeatureTransformer
-# from recfldtkn.observer import get_fn_case_GammaFullInfo
-
-# from recfldtkn.pipeline_case import get_ds_case_to_process
-# from recfldtkn.pipeline_case import process_df_casefeat_tasks_in_chunks
-# from recfldtkn.pipeline_case import process_df_tagging_tasks_in_chunks
-# from recfldtkn.pipeline_case import process_df_filtering_tasks
-# from recfldtkn.pipeline_case import assign_caseSplitTag_to_dsCase
-# from recfldtkn.pipeline_case import get_dfset_from_SetName
 
 from recfldtkn.configfn import load_cohort_args
 from config_observer.CF import cf_to_CaseFeatConfig
@@ -62,7 +37,7 @@ CASE_TAGGING_PROC_CONFIG = {
     'end_chunk_id': None,
     'chunk_size': 500000,
     'save_to_pickle': True,
-    'num_processors': 4,
+    'num_processors': 8, # 12,
 }
 
 
@@ -76,75 +51,91 @@ CASE_FIEDLING_PROC_CONFIG = {
     'num_processors': 4
 }
 
-
 SAVE_DF_CASE = True
 SAVE_DS_DATA = True
+LOAD_DF_CASE = True
+LOAD_DS_DATA = True
+SAVE_TRIGGER_DF = True # False
+RANDOM_SAMPLE = None # 10000 
+
+parser = argparse.ArgumentParser(description="Run data processing pipelines with configurable settings")
+parser.add_argument('--ds_config_name', type=str, default='tagBfAfCGMrn', help='Path to the configuration file')
 
 
+
+# OutDataset = 'xxx'
 
 if __name__ == '__main__':
 
-    ################################ dataset 1: TrulicityRx Tagging ################################
-    # 0. ************ RFT config ************
-    # RecName_to_dsRec, RecName_to_dsRecInfo = {}, {}
-    # cohort_label_list = [1]
-    # # 1. ************ Case Trigger config ************
-    # TriggerCaseMethod = 'AnyInv'
-    # # 2. ************ InputCaseSetName ************
-    # InputCaseSetName = None 
-    # # 3. ************ CaseTagging: TagMethod_List ************
-    # TagMethod_List = ['PttBasicDF', 'EgmBf1Y', 'InvEgmAf1W']
-    # # 4. ************ CaseFiltering: FilterMethod_List ************
-    # FilterMethod_List = [] 
-    # # 5. ************ CaseSpliting: SplitDict ************
-    # SplitDict = {} 
-    # # 6. ************ CaseSet Selection ************
-    # CaseSplitConfig = {}
-    # # 7. ************ CaseFeat: Feature Enriching ************
-    # CaseFeat_List = [] # ['RxLevel.DemoInvRx.ObsPnt', 'RxLevel.Egm.Af1W']
+    args = parser.parse_args()
+    ds_config_name = args.ds_config_name
+
+    if ds_config_name == 'tagBfAfCGMinfo':
+        # ################################################################
+        # 0. ************ RFT config ************
+        RecName_to_dsRec, RecName_to_dsRecInfo = {}, {}
+        cohort_label_list = [1, 2, 3]
+        # 1. ************ Case Trigger config ************
+        TriggerCaseMethod = 'CGM5MinEntry'
+        # 2. ************ InputCaseSetName ************
+        InputCaseSetName = None
+        # 3. ************ CaseTagging: TagMethod_List ************
+        TagMethod_List = ['Bf24hCGMinfo', 'Af2hCGMinfo']
+        # 4. ************ CaseFiltering: FilterMethod_List ************
+        FilterMethod_List = []
+        # 5. ************ CaseSpliting: SplitDict ************
+        SplitDict = {}
+        # 6. ************ CaseSet Selection ************
+        CaseSplitConfig = {}
+        # 7. ************ CaseFeat: Feature Enriching ************
+        CaseFeat_List = []
+
+    elif ds_config_name == 'filterBfAfCGMrn':
+        # ################################################################
+        # 0. ************ RFT config ************
+        RecName_to_dsRec, RecName_to_dsRecInfo = {}, {}
+        cohort_label_list = [1, 2, 3]
+        # 1. ************ Case Trigger config ************
+        TriggerCaseMethod = 'CGM5MinEntry'
+        # 2. ************ InputCaseSetName ************
+        InputCaseSetName = 'C1.2.3-CGM5MinEntry-sz21215912-Bf24hCGMinfo.Af2hCGMinfo'
+        # 3. ************ CaseTagging: TagMethod_List ************
+        TagMethod_List = []
+        # 4. ************ CaseFiltering: FilterMethod_List ************
+        FilterMethod_List = ['fBf24h280CGM', 'fAf2h24CGM', 'fBf24HModePctn40']
+        # FilterMethod_List = ['fBf24h289CGM', 'fAf2h24CGM']
+        # 5. ************ CaseSpliting: SplitDict ************
+        SplitDict = {}
+        # 6. ************ CaseSet Selection ************
+        CaseSplitConfig = {}
+        # 7. ************ CaseFeat: Feature Enriching ************
+        CaseFeat_List = []
 
 
-    # ################################ dataset 1: TrulicityRx Filtering and Split ################################
-    # # # 0. ************ RFT config ************
-    # RecName_to_dsRec, RecName_to_dsRecInfo = {}, {}
-    # cohort_label_list = [1]
-    # # # 1. ************ Case Trigger config ************
-    # TriggerCaseMethod = 'AnyInv'
-    # # # 2. ************ InputCaseSetName ************
-    # InputCaseSetName = 'C1-AnyInv-PttBasicDF.EgmBf1Y.InvEgmAf1W' 
-    # # # 3. ************ CaseTagging: TagMethod_List ************
-    # TagMethod_List = []
-    # # # 4. ************ CaseFiltering: FilterMethod_List ************
-    # FilterMethod_List = ['fPttBasicDF', 'fTailObsDT']
-    # # # 5. ************ CaseSpliting: SplitDict ************
-    # SplitDict = {'RANDOM_SEED': 42, 'downsample_ratio': 1, 'out_ratio': 0.0, 'test_ratio': 0.2, 'valid_ratio': 0.0}
-    # # # 6. ************ CaseSet Selection ************
-    # CaseSplitConfig = {}
-    # # # 7. ************ CaseFeat: Feature Enriching ************
-    # CaseFeat_List = [] # ['RxLevel.DemoInvRx.ObsPnt', 'RxLevel.Egm.Af1W']
+    elif ds_config_name == 'tagBfAfCGMinfo':
+        # ################################################################
+        # 0. ************ RFT config ************
+        RecName_to_dsRec, RecName_to_dsRecInfo = {}, {}
+        cohort_label_list = [1, 2, 3]
+        # 1. ************ Case Trigger config ************
+        TriggerCaseMethod = 'CGM5MinEntry'
+        # 2. ************ InputCaseSetName ************
+        InputCaseSetName = 'C1.2.3-CGM5MinEntry-sz21215912-Bf24hCGMrn.Af2hCGMrn-fBf24h280CGM.fAf2h24CGM'
+        # 3. ************ CaseTagging: TagMethod_List ************
+        TagMethod_List = ['Bf24hCGMinfo', 'Af2hCGMinfo']
+        # 4. ************ CaseFiltering: FilterMethod_List ************
+        FilterMethod_List = []
+        # FilterMethod_List = ['fBf24h289CGM', 'fAf2h24CGM']
+        # 5. ************ CaseSpliting: SplitDict ************
+        SplitDict = {}
+        # 6. ************ CaseSet Selection ************
+        CaseSplitConfig = {}
+        # 7. ************ CaseFeat: Feature Enriching ************
+        CaseFeat_List = []
 
+    else:
+        raise ValueError(f"Invalid ds_config_name: {ds_config_name}")
 
-    # ################################ dataset 3: TrulicityRx Case Fielding ################################
-    # 0. ************ RFT config ************
-    RecName_to_dsRec, RecName_to_dsRecInfo = {}, {}
-    cohort_label_list = [1]
-    # 1. ************ Case Trigger config ************
-    TriggerCaseMethod = 'AnyInv'
-    # 2. ************ InputCaseSetName ************
-    InputCaseSetName = 'C1-AnyInv-PttBasicDF.EgmBf1Y.InvEgmAf1W-fPttBasicDF.fTailObsDT-rs42.ds1.out0.0ts0.2vd0.0' 
-    # 3. ************ CaseTagging: TagMethod_List ************
-    TagMethod_List = []
-    # 4. ************ CaseFiltering: FilterMethod_List ************
-    FilterMethod_List = []
-    # 5. ************ CaseSpliting: SplitDict ************
-    SplitDict = {}
-    # 6. ************ CaseSet Selection ************
-    CaseSplitConfig = {
-        'TrainSetName': 'In-Train_all',
-        'EvalSetNames': ['In-Test_all']
-    }
-    # 7. ************ CaseFeat: Feature Enriching ************
-    CaseFeat_List = ['InvLevel.DemoInvRx.ObsPnt', 'InvLevel.Egm.Af1W']
 
 
     results = pipeline_to_generate_dfcase_and_dataset(RecName_to_dsRec, 
@@ -173,6 +164,10 @@ if __name__ == '__main__':
                                                       CASE_FIEDLING_PROC_CONFIG,
                                                       SAVE_DF_CASE,
                                                       SAVE_DS_DATA,
+                                                      LOAD_DF_CASE, 
+                                                      LOAD_DS_DATA,
+                                                      RANDOM_SAMPLE,
+                                                      SAVE_TRIGGER_DF,
                                                     )
 
     
