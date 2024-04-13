@@ -326,33 +326,55 @@ def _process_chunk_tagging(chunk_id, df_case, chunk_size,
     end_idx = min((chunk_id + 1) * chunk_size, len(df_case))
     df_case_chunk = df_case.iloc[start_idx:end_idx].reset_index(drop=True)
     # print(f'chunk_id: {chunk_id}, start_idx: {start_idx}, end_idx: {end_idx}')
+
+
+    _, df_case_chunk_tagged = process_df_tagging_tasks(
+        df_case_chunk, 
+        cohort_label_list,
+        case_id_columns,
+        InputCaseSetName, 
+        TagMethod_List, 
+        cf_to_QueryCaseFeatConfig,  
+        cohort_config,
+        SPACE, 
+        RecName_to_dsRec, 
+        RecName_to_dsRecInfo,
+        use_CF_from_disk, 
+        use_CO_from_disk,
+        chunk_id, 
+        start_idx, 
+        end_idx, 
+        chunk_size,
+        save_to_pickle,
+    )
+    return df_case_chunk_tagged
     
     
-    try:
-        _, df_case_chunk_tagged = process_df_tagging_tasks(
-            df_case_chunk, 
-            cohort_label_list,
-            case_id_columns,
-            InputCaseSetName, 
-            TagMethod_List, 
-            cf_to_QueryCaseFeatConfig,  
-            cohort_config,
-            SPACE, 
-            RecName_to_dsRec, 
-            RecName_to_dsRecInfo,
-            use_CF_from_disk, 
-            use_CO_from_disk,
-            chunk_id, 
-            start_idx, 
-            end_idx, 
-            chunk_size,
-            save_to_pickle,
-        )
-        return df_case_chunk_tagged
-    except Exception as e:
-        # logger.error(f"Exception in main processing loop: {e}")
-        logger.error(f"Exception in chunk {chunk_id}: {e}")
-        return None
+    # try:
+    #     _, df_case_chunk_tagged = process_df_tagging_tasks(
+    #         df_case_chunk, 
+    #         cohort_label_list,
+    #         case_id_columns,
+    #         InputCaseSetName, 
+    #         TagMethod_List, 
+    #         cf_to_QueryCaseFeatConfig,  
+    #         cohort_config,
+    #         SPACE, 
+    #         RecName_to_dsRec, 
+    #         RecName_to_dsRecInfo,
+    #         use_CF_from_disk, 
+    #         use_CO_from_disk,
+    #         chunk_id, 
+    #         start_idx, 
+    #         end_idx, 
+    #         chunk_size,
+    #         save_to_pickle,
+    #     )
+    #     return df_case_chunk_tagged
+    # except Exception as e:
+    #     # logger.error(f"Exception in main processing loop: {e}")
+    #     logger.error(f"Exception in chunk {chunk_id}: {e}")
+    #     return None
 
 def process_df_tagging_tasks_in_chunks(df_case, 
                                        cohort_label_list,

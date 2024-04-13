@@ -282,26 +282,20 @@ def pipeline_to_generate_dfcase_and_dataset(RecName_to_dsRec,
 
 
 
+def create_tokenizer_from_CF_vocab(CF_vocab):
+    tokenizer_dict = {}
+    for SeqType in CF_vocab:
 
+        tid2tkn = {int(tid): tkn for tid, tkn in CF_vocab[SeqType]['tid2tkn'].items()}
+        tkn2tid = {v: k for k, v in tid2tkn.items()}
+        unk_token = tid2tkn[0]
+        if 'unk' not in unk_token:
+            print(f'Warning: unk_token: {unk_token} is not unk')
 
-
-
-
-
-# def create_tokenizer_from_CF_vocab(CF_vocab):
-#     tokenizer_dict = {}
-#     for SeqType in CF_vocab:
-
-#         tid2tkn = {int(tid): tkn for tid, tkn in CF_vocab[SeqType]['tid2tkn'].items()}
-#         tkn2tid = {v: k for k, v in tid2tkn.items()}
-#         unk_token = tid2tkn[0]
-#         if 'unk' not in unk_token:
-#             print(f'Warning: unk_token: {unk_token} is not unk')
-
-#         tokenizer = tokenizers.Tokenizer(tokenizers.models.WordLevel(vocab = tkn2tid, unk_token=unk_token))
-#         tokenizer.pre_tokenizer = WhitespaceSplit()
-#         tokenizer_dict[SeqType] = tokenizer
-#     return tokenizer_dict
+        tokenizer = tokenizers.Tokenizer(tokenizers.models.WordLevel(vocab = tkn2tid, unk_token=unk_token))
+        tokenizer.pre_tokenizer = WhitespaceSplit()
+        tokenizer_dict[SeqType] = tokenizer
+    return tokenizer_dict
 
 
 # def get_dfset_from_SetName(df_dsmp, SetName, case_id_columns, SubGroupFilterMethod):
