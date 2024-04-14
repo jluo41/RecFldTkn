@@ -37,18 +37,18 @@ CASE_TAGGING_PROC_CONFIG = {
     'end_chunk_id': None,
     'chunk_size': 500000,
     'save_to_pickle': True,
-    'num_processors': 8, # 12,
+    'num_processors': 1, # 12,
 }
 
 
 CASE_FIEDLING_PROC_CONFIG = {
-    'use_CF_from_disk': True,
+    'use_CF_from_disk': False,
     'use_CO_from_disk': True,
     'start_chunk_id': 0,
     'end_chunk_id': None,
     'chunk_size': 100000,
     'save_to_pickle': False,
-    'num_processors': 4
+    'num_processors': 4,
 }
 
 SAVE_DF_CASE = True
@@ -80,7 +80,12 @@ if __name__ == '__main__':
         # 2. ************ InputCaseSetName ************
         InputCaseSetName = None
         # 3. ************ CaseTagging: TagMethod_List ************
-        TagMethod_List = ['Bf24hCGMinfo', 'Af2hCGMinfo']
+        TagMethod_List = [
+            'PttBasicWD', 
+            'Bf24hCGMinfo', 'Af2hCGMinfo',
+            # 'Bf24hCGMrn', 'Af2hCGMrn',
+            # 'Bf24hCGMmode', 'Af2hCGMmode', 
+            ]
         # 4. ************ CaseFiltering: FilterMethod_List ************
         FilterMethod_List = []
         # 5. ************ CaseSpliting: SplitDict ************
@@ -90,7 +95,7 @@ if __name__ == '__main__':
         # 7. ************ CaseFeat: Feature Enriching ************
         CaseFeat_List = []
 
-    elif ds_config_name == 'filterBfAfCGMrn':
+    elif ds_config_name == 'fltBfAfCGMinfo':
         # ################################################################
         # 0. ************ RFT config ************
         RecName_to_dsRec, RecName_to_dsRecInfo = {}, {}
@@ -98,11 +103,14 @@ if __name__ == '__main__':
         # 1. ************ Case Trigger config ************
         TriggerCaseMethod = 'CGM5MinEntry'
         # 2. ************ InputCaseSetName ************
-        InputCaseSetName = 'C1.2.3-CGM5MinEntry-sz21215912-Bf24hCGMinfo.Af2hCGMinfo'
+        InputCaseSetName = 'C1.2.3-CGM5MinEntry-sz21215912-tagBfAfCGMinfo'
         # 3. ************ CaseTagging: TagMethod_List ************
         TagMethod_List = []
         # 4. ************ CaseFiltering: FilterMethod_List ************
-        FilterMethod_List = ['fBf24h280CGM', 'fAf2h24CGM', 'fBf24HModePctn40']
+        FilterMethod_List = [
+                             'fPttBasicWD',
+                             'fBf24h280CGM', 'fAf2h24CGM', 
+                             'fBf24HModePctn40', 'fAf2HModePctn40']
         # FilterMethod_List = ['fBf24h289CGM', 'fAf2h24CGM']
         # 5. ************ CaseSpliting: SplitDict ************
         SplitDict = {}
@@ -111,8 +119,7 @@ if __name__ == '__main__':
         # 7. ************ CaseFeat: Feature Enriching ************
         CaseFeat_List = []
 
-
-    elif ds_config_name == 'tagBfAfCGMinfo':
+    elif ds_config_name == 'splitR42ds10':
         # ################################################################
         # 0. ************ RFT config ************
         RecName_to_dsRec, RecName_to_dsRecInfo = {}, {}
@@ -120,18 +127,87 @@ if __name__ == '__main__':
         # 1. ************ Case Trigger config ************
         TriggerCaseMethod = 'CGM5MinEntry'
         # 2. ************ InputCaseSetName ************
-        InputCaseSetName = 'C1.2.3-CGM5MinEntry-sz21215912-Bf24hCGMrn.Af2hCGMrn-fBf24h280CGM.fAf2h24CGM'
+        InputCaseSetName = 'C1.2.3-CGM5MinEntry-sz21215912-tagBfAfCGMinfo-fltBfAfCGMinfo'
         # 3. ************ CaseTagging: TagMethod_List ************
-        TagMethod_List = ['Bf24hCGMinfo', 'Af2hCGMinfo']
+        TagMethod_List = []
+        # 4. ************ CaseFiltering: FilterMethod_List ************
+        FilterMethod_List = []
+        # FilterMethod_List = ['fBf24h289CGM', 'fAf2h24CGM']
+        # 5. ************ CaseSpliting: SplitDict ************
+        SplitDict = {
+            'RANDOM_SEED': 42,
+            'downsample_ratio': 0.1,
+            'out_ratio': 0.1,
+            'test_ratio': 'tail0.1',
+            'valid_ratio': 0.1
+        }
+        # 6. ************ CaseSet Selection ************
+        CaseSplitConfig = {
+            # 'TrainSetName': 'In_Train',
+            # 'EvalSetNames': ['In_Valid', 'In_Test', 'Out_Valid', 'Out_Test', 'Out_Train'],
+        }
+        # 7. ************ CaseFeat: Feature Enriching ************
+        CaseFeat_List = []
+        
+    elif ds_config_name == 'CgmGptData':
+        # ################################################################
+        # 0. ************ RFT config ************
+        RecName_to_dsRec, RecName_to_dsRecInfo = {}, {}
+        cohort_label_list = [1, 2, 3]
+        # 1. ************ Case Trigger config ************
+        TriggerCaseMethod = 'CGM5MinEntry'
+        # 2. ************ InputCaseSetName ************
+        InputCaseSetName = 'C1.2.3-CGM5MinEntry-sz21215912-tagBfAfCGMinfo-fltBfAfCGMinfo-splitR42ds10'
+        # 3. ************ CaseTagging: TagMethod_List ************
+        TagMethod_List = []
         # 4. ************ CaseFiltering: FilterMethod_List ************
         FilterMethod_List = []
         # FilterMethod_List = ['fBf24h289CGM', 'fAf2h24CGM']
         # 5. ************ CaseSpliting: SplitDict ************
         SplitDict = {}
         # 6. ************ CaseSet Selection ************
-        CaseSplitConfig = {}
+        CaseSplitConfig = {
+            'TrainSetName': 'In-Train_all',
+            'EvalSetNames': ['In-Valid_all', 'In-Test_all', 
+                             'Out_all', 'Out-Test_all'],
+        }
         # 7. ************ CaseFeat: Feature Enriching ************
-        CaseFeat_List = []
+        CaseFeat_List =  ['TargetCGM.Bf24H', 'TargetCGM.Af2H']
+        # CaseFeat_List = []
+        
+        
+    elif ds_config_name == 'CgmGptMedalData':
+        # ################################################################
+        # 0. ************ RFT config ************
+        RecName_to_dsRec, RecName_to_dsRecInfo = {}, {}
+        cohort_label_list = [1, 2, 3]
+        # 1. ************ Case Trigger config ************
+        TriggerCaseMethod = 'CGM5MinEntry'
+        # 2. ************ InputCaseSetName ************
+        InputCaseSetName = 'C1.2.3-CGM5MinEntry-sz21215912-tagBfAfCGMinfo-fltBfAfCGMinfo-splitR42ds10'
+        # 3. ************ CaseTagging: TagMethod_List ************
+        TagMethod_List = []
+        # 4. ************ CaseFiltering: FilterMethod_List ************
+        FilterMethod_List = []
+        # FilterMethod_List = ['fBf24h289CGM', 'fAf2h24CGM']
+        # 5. ************ CaseSpliting: SplitDict ************
+        SplitDict = {}
+        # 6. ************ CaseSet Selection ************
+        CaseSplitConfig = {
+            'TrainSetName': 'In-Train_all',
+            'EvalSetNames': ['In-Valid_all', 'In-Test_all', 
+                             'Out_all', 'Out-Test_all'],
+        }
+        # 7. ************ CaseFeat: Feature Enriching ************
+        CaseFeat_List =   [
+                            'TargetCGM.Bf24H', 
+                            'TargetCGM.Af2H',
+                            'Time.Bf24H', 
+                            'Time.Af2H',
+                            'Food.Bf24H', 
+                            'Food.Af2H',
+                            ]
+        # CaseFeat_List = []
 
     else:
         raise ValueError(f"Invalid ds_config_name: {ds_config_name}")
@@ -168,6 +244,7 @@ if __name__ == '__main__':
                                                       LOAD_DS_DATA,
                                                       RANDOM_SAMPLE,
                                                       SAVE_TRIGGER_DF,
+                                                      FinalCaseSetName_SUFFIX = ds_config_name,
                                                     )
 
     
