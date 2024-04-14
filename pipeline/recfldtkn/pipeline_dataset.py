@@ -63,6 +63,7 @@ def pipeline_to_generate_dfcase_and_dataset(RecName_to_dsRec,
 
                                             RANDOM_SAMPLE = None,
                                             SAVE_TRIGGER_DF = True,
+                                            FinalCaseSetName_SUFFIX = None,
                                             ):
     
     results = {}
@@ -89,6 +90,7 @@ def pipeline_to_generate_dfcase_and_dataset(RecName_to_dsRec,
                                                         RecName_to_dsRec, 
                                                         RecName_to_dsRecInfo, 
                                                         SAVE_TRIGGER_DF,
+                                                        
                                                         )
     logger.info(f'InputCaseSetName: {InputCaseSetName}')
     logger.info(f'df_case shape: {df_case.shape}')
@@ -97,22 +99,25 @@ def pipeline_to_generate_dfcase_and_dataset(RecName_to_dsRec,
 
     
     # =========================== Part 1: df_case ===========================
+    if FinalCaseSetName_SUFFIX is None: 
 
-    FinalOutCaseSetName = InputCaseSetName
-    if len(TagMethod_List) > 0:
-        FinalOutCaseSetName = FinalOutCaseSetName + '-' + '.'.join(TagMethod_List)
-    if len(FilterMethod_List) > 0:
-        FinalOutCaseSetName = FinalOutCaseSetName + '-' + '.'.join(FilterMethod_List)
-    if len(SplitDict) > 0:
-        SplitDict['RootID'] = cohort_args['RootID']
-        SplitDict['ObsDT'] = cohort_args['ObsDTName']
-        RANDOM_SEED = SplitDict['RANDOM_SEED']
-        downsample_ratio = SplitDict['downsample_ratio']
-        out_ratio = SplitDict['out_ratio']
-        test_ratio = SplitDict['test_ratio']
-        valid_ratio = SplitDict['valid_ratio']
-        SplitMethod = f'rs{RANDOM_SEED}.ds{downsample_ratio}.out{out_ratio}ts{test_ratio}vd{valid_ratio}' 
-        FinalOutCaseSetName = FinalOutCaseSetName + '-' + SplitMethod
+        FinalOutCaseSetName = InputCaseSetName
+        if len(TagMethod_List) > 0:
+            FinalOutCaseSetName = FinalOutCaseSetName + '-' + '.'.join(TagMethod_List)
+        if len(FilterMethod_List) > 0:
+            FinalOutCaseSetName = FinalOutCaseSetName + '-' + '.'.join(FilterMethod_List)
+        if len(SplitDict) > 0:
+            SplitDict['RootID'] = cohort_args['RootID']
+            SplitDict['ObsDT'] = cohort_args['ObsDTName']
+            RANDOM_SEED = SplitDict['RANDOM_SEED']
+            downsample_ratio = SplitDict['downsample_ratio']
+            out_ratio = SplitDict['out_ratio']
+            test_ratio = SplitDict['test_ratio']
+            valid_ratio = SplitDict['valid_ratio']
+            SplitMethod = f'rs{RANDOM_SEED}.ds{downsample_ratio}.out{out_ratio}ts{test_ratio}vd{valid_ratio}' 
+            FinalOutCaseSetName = FinalOutCaseSetName + '-' + SplitMethod
+    else:
+        FinalOutCaseSetName = InputCaseSetName + '-' + FinalCaseSetName_SUFFIX
 
     path = os.path.join(SPACE['DATA_CaseSet'], FinalOutCaseSetName + '.p')
     # print(os.getcwd())
@@ -171,6 +176,7 @@ def pipeline_to_generate_dfcase_and_dataset(RecName_to_dsRec,
         path = os.path.join(SPACE['DATA_CaseSet'], FinalOutCaseSetName + '.p')
         logger.info(f'save df_case to: {path}')
         logger.info(f'df_case shape: {df_case.shape}')
+        df_case = df_case.sort_values(case_id_columns).reset_index(drop = True)
         df_case.to_pickle(path)
 
 
@@ -225,12 +231,11 @@ def pipeline_to_generate_dfcase_and_dataset(RecName_to_dsRec,
                 ds_set = datasets.Dataset.from_pandas(df_set)
                 d[SetName] = ds_set
             ds_case_dict = datasets.DatasetDict(d)
+            logger.info(f'ds_case_dict: {ds_case_dict}')
 
         else:
             d = {'inference': datasets.Dataset.from_pandas(df_case[case_id_columns].reset_index(drop = True))}
             ds_case_dict = datasets.DatasetDict(d)
-        
-        # logger.info(f'ds_case_dict: {ds_case_dict}')
     
 
 

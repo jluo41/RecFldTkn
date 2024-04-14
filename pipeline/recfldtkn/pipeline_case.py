@@ -212,6 +212,8 @@ def process_df_tagging_tasks(df_case,
                              save_to_pickle = False,
                              ):
     
+    df_case = df_case.sort_values(case_id_columns).reset_index(drop = True)
+    
     # You can also check whether it is in disk or not.
     OutputCaseSetName = '-'.join([InputCaseSetName, 't.'+'.'.join(TagMethod_List)])
     
@@ -247,7 +249,10 @@ def process_df_tagging_tasks(df_case,
                 logger.info(f'loading {OutputCaseSetName} from {fullfilepath} -----')
                 df_case_new = pd.read_pickle(fullfilepath) 
                 columns = [i for i in df_case_new.columns if i not in df_case.columns]
+                num_before = len(df_case)
                 df_case = pd.merge(df_case, df_case_new[case_id_columns + columns], on=case_id_columns)
+                num_after = len(df_case)
+                assert num_before == num_after
                 continue 
 
         ############################### option 2: calculating and saving to disk ###############################
@@ -304,16 +309,18 @@ def process_df_tagging_tasks(df_case,
             else:
                 raise ValueError('No fn_case_tagging_on_casefeat or InfoRecName in the module')
             
+        df_case = df_case.sort_values(case_id_columns).reset_index(drop = True)
+        
+        # this is to save a single chunk to TaggingSize folder.
         if save_to_pickle == True:
             
             fullfolderpath = os.path.dirname(fullfilepath)
             if not os.path.exists(fullfolderpath): 
-                print('\n\n', fullfolderpath)
+                # print('\n\n', fullfolderpath)
                 os.makedirs(fullfolderpath)
                 
             logger.info(f'saving {OutputCaseSetName} to {fullfilepath} -----')
             df_case.to_pickle(fullfilepath)
-
     return OutputCaseSetName, df_case
     
 
@@ -322,59 +329,65 @@ def _process_chunk_tagging(chunk_id, df_case, chunk_size,
                            InputCaseSetName, TagMethod_List, cf_to_QueryCaseFeatConfig, cohort_config,
                            SPACE, RecName_to_dsRec, RecName_to_dsRecInfo, 
                            use_CF_from_disk, use_CO_from_disk, save_to_pickle):
-    start_idx = chunk_id * chunk_size
-    end_idx = min((chunk_id + 1) * chunk_size, len(df_case))
-    df_case_chunk = df_case.iloc[start_idx:end_idx].reset_index(drop=True)
+    # start_idx = chunk_id * chunk_size
+    # end_idx = min((chunk_id + 1) * chunk_size, len(df_case))
+    # df_case_chunk = df_case.iloc[start_idx:end_idx].reset_index(drop=True)
     # print(f'chunk_id: {chunk_id}, start_idx: {start_idx}, end_idx: {end_idx}')
 
 
-    _, df_case_chunk_tagged = process_df_tagging_tasks(
-        df_case_chunk, 
-        cohort_label_list,
-        case_id_columns,
-        InputCaseSetName, 
-        TagMethod_List, 
-        cf_to_QueryCaseFeatConfig,  
-        cohort_config,
-        SPACE, 
-        RecName_to_dsRec, 
-        RecName_to_dsRecInfo,
-        use_CF_from_disk, 
-        use_CO_from_disk,
-        chunk_id, 
-        start_idx, 
-        end_idx, 
-        chunk_size,
-        save_to_pickle,
-    )
-    return df_case_chunk_tagged
+    # _, df_case_chunk_tagged = process_df_tagging_tasks(
+    #     df_case_chunk, 
+    #     cohort_label_list,
+    #     case_id_columns,
+    #     InputCaseSetName, 
+    #     TagMethod_List, 
+    #     cf_to_QueryCaseFeatConfig,  
+    #     cohort_config,
+    #     SPACE, 
+    #     RecName_to_dsRec, 
+    #     RecName_to_dsRecInfo,
+    #     use_CF_from_disk, 
+    #     use_CO_from_disk,
+    #     chunk_id, 
+    #     start_idx, 
+    #     end_idx, 
+    #     chunk_size,
+    #     save_to_pickle,
+    # )
+    # return df_case_chunk_tagged
     
     
-    # try:
-    #     _, df_case_chunk_tagged = process_df_tagging_tasks(
-    #         df_case_chunk, 
-    #         cohort_label_list,
-    #         case_id_columns,
-    #         InputCaseSetName, 
-    #         TagMethod_List, 
-    #         cf_to_QueryCaseFeatConfig,  
-    #         cohort_config,
-    #         SPACE, 
-    #         RecName_to_dsRec, 
-    #         RecName_to_dsRecInfo,
-    #         use_CF_from_disk, 
-    #         use_CO_from_disk,
-    #         chunk_id, 
-    #         start_idx, 
-    #         end_idx, 
-    #         chunk_size,
-    #         save_to_pickle,
-    #     )
-    #     return df_case_chunk_tagged
-    # except Exception as e:
-    #     # logger.error(f"Exception in main processing loop: {e}")
-    #     logger.error(f"Exception in chunk {chunk_id}: {e}")
-    #     return None
+    try:
+        start_idx = chunk_id * chunk_size
+        end_idx = min((chunk_id + 1) * chunk_size, len(df_case))
+        df_case_chunk = df_case.iloc[start_idx:end_idx].reset_index(drop=True)
+        
+        _, df_case_chunk_tagged = process_df_tagging_tasks(
+            df_case_chunk, 
+            cohort_label_list,
+            case_id_columns,
+            InputCaseSetName, 
+            TagMethod_List, 
+            cf_to_QueryCaseFeatConfig,  
+            cohort_config,
+            SPACE, 
+            RecName_to_dsRec, 
+            RecName_to_dsRecInfo,
+            use_CF_from_disk, 
+            use_CO_from_disk,
+            chunk_id, 
+            start_idx, 
+            end_idx, 
+            chunk_size,
+            save_to_pickle,
+        )
+        return df_case_chunk_tagged
+    except Exception as e:
+        # logger.error(f"Exception in main processing loop: {e}")
+        logger.error(f"Exception in chunk {chunk_id}: {e}")
+        return None
+
+
 
 def process_df_tagging_tasks_in_chunks(df_case, 
                                        cohort_label_list,
@@ -504,29 +517,61 @@ def _process_chunk_casefeat(chunk_id, df_case, chunk_size,
                            InputCaseSetName, CaseFeat_List, cf_to_CaseFeatConfig, cohort_config,
                            SPACE, RecName_to_dsRec, RecName_to_dsRecInfo, 
                            use_CF_from_disk, use_CO_from_disk, save_to_pickle):
-    start_idx = chunk_id * chunk_size
-    end_idx = min((chunk_id + 1) * chunk_size, len(df_case))
-    df_case_chunk = df_case.iloc[start_idx:end_idx].reset_index(drop=True)
-    _, df_case_chunk_casefeat = process_df_casefeat_tasks(
-        df_case_chunk, 
-        cohort_label_list,
-        case_id_columns,
-        InputCaseSetName, 
-        CaseFeat_List, 
-        cf_to_CaseFeatConfig,  
-        cohort_config,
-        SPACE, 
-        RecName_to_dsRec, 
-        RecName_to_dsRecInfo,
-        use_CF_from_disk, 
-        use_CO_from_disk,
-        chunk_id, 
-        start_idx, 
-        end_idx, 
-        chunk_size,
-        save_to_pickle,
-    )
-    return df_case_chunk_casefeat
+    # start_idx = chunk_id * chunk_size
+    # end_idx = min((chunk_id + 1) * chunk_size, len(df_case))
+    # df_case_chunk = df_case.iloc[start_idx:end_idx].reset_index(drop=True)
+    # _, df_case_chunk_casefeat = process_df_casefeat_tasks(
+    #     df_case_chunk, 
+    #     cohort_label_list,
+    #     case_id_columns,
+    #     InputCaseSetName, 
+    #     CaseFeat_List, 
+    #     cf_to_CaseFeatConfig,  
+    #     cohort_config,
+    #     SPACE, 
+    #     RecName_to_dsRec, 
+    #     RecName_to_dsRecInfo,
+    #     use_CF_from_disk, 
+    #     use_CO_from_disk,
+    #     chunk_id, 
+    #     start_idx, 
+    #     end_idx, 
+    #     chunk_size,
+    #     save_to_pickle,
+    # )
+    # return df_case_chunk_casefeat
+
+    try:
+        start_idx = chunk_id * chunk_size
+        end_idx = min((chunk_id + 1) * chunk_size, len(df_case))
+        df_case_chunk = df_case.iloc[start_idx:end_idx].reset_index(drop=True)
+        _, df_case_chunk_casefeat = process_df_casefeat_tasks(
+                df_case_chunk, 
+                cohort_label_list,
+                case_id_columns,
+                InputCaseSetName, 
+                CaseFeat_List, 
+                cf_to_CaseFeatConfig,  
+                cohort_config,
+                SPACE, 
+                RecName_to_dsRec, 
+                RecName_to_dsRecInfo,
+                use_CF_from_disk, 
+                use_CO_from_disk,
+                chunk_id, 
+                start_idx, 
+                end_idx, 
+                chunk_size,
+                save_to_pickle,
+            )
+        return df_case_chunk_casefeat
+    
+    except Exception as e:
+        # logger.error(f"Exception in main processing loop: {e}")
+        print(f'\n\n\n There is an error: {e} \n\n\n')
+        logger.error(f"Exception in chunk {chunk_id}: {e}")
+        return None
+        
 
 
 def process_df_casefeat_tasks_in_chunks(df_case, 
@@ -594,9 +639,21 @@ def process_df_casefeat_tasks_in_chunks(df_case,
                 
                 for chunk_id in chunk_id_list]
 
-            for future in as_completed(futures):
-                ds_case_chunk_casefeat_list.append(future.result())
-                # future.result()
+            # for future in as_completed(futures):
+            #     ds_case_chunk_casefeat_list.append(future.result())
+            #     # future.result()
+            for idx, future in enumerate(as_completed(futures)):
+                chunk_id = chunk_id_list[idx]
+                try:
+                    result = future.result()
+                    if result is not None:
+                        logger.info(f'chunk_id: {chunk_id}, df_case_chunk_tagged: {result.shape}')
+                        ds_case_chunk_casefeat_list.append(result)
+                    else:
+                        logger.error(f"Error processing chunk {chunk_id}")
+                except Exception as e:
+                    logger.error(f"Exception in main processing loop: {e}")
+
     else:
         for chunk_id in chunk_id_list:
             ds_case_chunk_casefeat = _process_chunk_casefeat(
@@ -606,8 +663,11 @@ def process_df_casefeat_tasks_in_chunks(df_case,
                                         SPACE, RecName_to_dsRec, RecName_to_dsRecInfo, 
                                         use_CF_from_disk, use_CO_from_disk, save_to_pickle
                                     ) 
+            logger.info(f'chunk_id: {chunk_id}, df_case_chunk_tagged: {ds_case_chunk_casefeat.shape}')
             ds_case_chunk_casefeat_list.append(ds_case_chunk_casefeat)
                             
+                            
+    logger.info(f'concatenating datasets: length is {len(ds_case_chunk_casefeat_list)}')
     ds_case = concatenate_datasets(ds_case_chunk_casefeat_list)
     return cf_to_CaseFeatInfo, ds_case
 
@@ -713,6 +773,7 @@ def get_dfset_from_SetName(df_dsmp, SetName, case_id_columns, SubGroupFilterMeth
     Split, SubGroup = SetName.split('_')
     for i in ['In', 'Out', 'Train', 'Valid', 'Test']:
         if i.lower() in [t.lower() for t in Split.split('-')]:
+            # print(i)
             df_dsmp = df_dsmp[df_dsmp[i]].reset_index(drop = True)
     df_set = df_dsmp[case_id_columns].reset_index(drop = True)
     if SubGroup.lower() != 'all': pass
