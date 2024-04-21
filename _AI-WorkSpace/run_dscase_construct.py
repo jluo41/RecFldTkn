@@ -29,6 +29,10 @@ cohort_args['ObsDTName'] = 'ObsDT'
 cohort_args['PID_ObsDT_columns'] = [cohort_args['RootID'], cohort_args['ObsDTName']]
 
 
+from functools import reduce
+import itertools
+
+
 
 CASE_TAGGING_PROC_CONFIG = {
     'use_CF_from_disk': False,
@@ -37,24 +41,25 @@ CASE_TAGGING_PROC_CONFIG = {
     'end_chunk_id': None,
     'chunk_size': 500000,
     'save_to_pickle': True,
-    'num_processors': 1, # 12,
+    'num_processors': 4, # 12,
 }
 
 
 CASE_FIEDLING_PROC_CONFIG = {
-    'use_CF_from_disk': False,
-    'use_CO_from_disk': True,
+    'use_CF_from_disk': True,
+    'use_CO_from_disk': False,
     'start_chunk_id': 0,
     'end_chunk_id': None,
     'chunk_size': 100000,
-    'save_to_pickle': False,
     'num_processors': 4,
 }
 
 SAVE_DF_CASE = True
 SAVE_DS_DATA = True
+
 LOAD_DF_CASE = True
 LOAD_DS_DATA = True
+
 SAVE_TRIGGER_DF = True # False
 RANDOM_SAMPLE = None # 10000 
 
@@ -184,7 +189,8 @@ if __name__ == '__main__':
         # 1. ************ Case Trigger config ************
         TriggerCaseMethod = 'CGM5MinEntry'
         # 2. ************ InputCaseSetName ************
-        InputCaseSetName = 'C1.2.3-CGM5MinEntry-sz21215912-tagBfAfCGMinfo-fltBfAfCGMinfo-splitR42ds10'
+        # InputCaseSetName = 'C1.2.3-CGM5MinEntry-sz21215912-tagBfAfCGMinfo-fltBfAfCGMinfo-splitR42ds10'
+        InputCaseSetName = 'C123-CGM-tagfltBfAfCGMinfo-R42ds10'
         # 3. ************ CaseTagging: TagMethod_List ************
         TagMethod_List = []
         # 4. ************ CaseFiltering: FilterMethod_List ************
@@ -192,28 +198,102 @@ if __name__ == '__main__':
         # FilterMethod_List = ['fBf24h289CGM', 'fAf2h24CGM']
         # 5. ************ CaseSpliting: SplitDict ************
         SplitDict = {}
+        
         # 6. ************ CaseSet Selection ************
-        CaseSplitConfig = {
-            'TrainSetName': 'In-Train_all',
-            'EvalSetNames': ['In-Valid_all', 'In-Test_all', 
-                             'Out_all', 'Out-Test_all'],
-        }
+        
+        # CaseSplitConfig = {
+        #     'TrainSetName': 'In-Train_all',
+        #     'EvalSetNames': ['In-Valid_all', 'In-Test_all', 
+        #                      'Out_all', 'Out-Test_all'],
+        # }
+        CaseSplitConfig = 'split_io_tvt_disease_cohort'
+
+
         # 7. ************ CaseFeat: Feature Enriching ************
         CaseFeat_List =   [
                             'TargetCGM.Bf24H', 
                             'TargetCGM.Af2H',
-                            'Time.Bf24H', 
-                            'Time.Af2H',
-                            'Food.Bf24H', 
-                            'Food.Af2H',
+                            
+                            'TimeSparse.Bf24H', 
+                            'TimeSparse.Af2H',
+                            
+                            'MedSparse.Bf24H', 
+                            'MedSparse.Af2H',
+                            
+                            'EduSparse.Bf24H', 
+                            'EduSparse.Af2H',
+                            
+                            'DietSparse.Bf24H', 
+                            'DietSparse.Af2H',
+                            
+                            'ActivitySparse.Bf24H', 
+                            'ActivitySparse.Af2H',
+                            
+                            'LabVitalSparse.Bf24H', 
+                            'LabVitalSparse.Af2H',
                             ]
-        # CaseFeat_List = []
+
+
+    elif ds_config_name == 'CgmGptMedalDataTest':
+        # ################################################################
+        # 0. ************ RFT config ************
+        RecName_to_dsRec, RecName_to_dsRecInfo = {}, {}
+        cohort_label_list = [1, 2, 3]
+        # 1. ************ Case Trigger config ************
+        TriggerCaseMethod = 'CGM5MinEntry'
+        # 2. ************ InputCaseSetName ************
+        # InputCaseSetName = 'C1.2.3-CGM5MinEntry-sz21215912-tagBfAfCGMinfo-fltBfAfCGMinfo-splitR42ds10'
+        InputCaseSetName = 'C123-CGM-tagfltBfAfCGMinfo-R42ds10'
+        # 3. ************ CaseTagging: TagMethod_List ************
+        TagMethod_List = []
+        # 4. ************ CaseFiltering: FilterMethod_List ************
+        FilterMethod_List = []
+        # FilterMethod_List = ['fBf24h289CGM', 'fAf2h24CGM']
+        # 5. ************ CaseSpliting: SplitDict ************
+        SplitDict = {}
+        
+        # 6. ************ CaseSet Selection ************
+        
+        # CaseSplitConfig = {
+        #     'TrainSetName': 'In-Train_all',
+        #     'EvalSetNames': ['In-Valid_all', 'In-Test_all', 
+        #                      'Out_all', 'Out-Test_all'],
+        # }
+        CaseSplitConfig = 'split_io_tvt_disease_cohort'
+
+
+        # 7. ************ CaseFeat: Feature Enriching ************
+        CaseFeat_List =   [
+                            'TargetCGM.Bf24H', 
+                            'TargetCGM.Af2H',
+                            
+                            'TimeSparse.Bf24H', 
+                            'TimeSparse.Af2H',
+                            
+                            'MedSparse.Bf24H', 
+                            'MedSparse.Af2H',
+                            
+                            'EduSparse.Bf24H', 
+                            'EduSparse.Af2H',
+                            
+                            'DietSparse.Bf24H', 
+                            'DietSparse.Af2H',
+                            
+                            'ActivitySparse.Bf24H', 
+                            'ActivitySparse.Af2H',
+                            
+                            'LabVitalSparse.Bf24H', 
+                            'LabVitalSparse.Af2H',
+                            ]
+        
+        
+        RANDOM_SAMPLE = 500000 
 
     else:
         raise ValueError(f"Invalid ds_config_name: {ds_config_name}")
 
 
-
+    SAVE_TRIGGER_DF = False if len(CaseFeat_List) > 0 else True
     results = pipeline_to_generate_dfcase_and_dataset(RecName_to_dsRec, 
                                                       RecName_to_dsRecInfo,
 
