@@ -196,6 +196,7 @@ def get_CaseObsInfo_for_a_CaseObsName(CaseObsName,
                                       record_to_ds_rec_info = {}):
     
     RecObsName_List, name_CasePhi = parse_CaseObsName(CaseObsName)
+    # print(CaseObsName, RecObsName_List, name_CasePhi)
     Phi_Tools = fetch_caseobs_Phi_tools(name_CasePhi, CaseObsName, SPACE)
 
     get_selected_columns = Phi_Tools['get_selected_columns']
@@ -681,7 +682,11 @@ class CaseObserverTransformer:
         if len(Path_to_DS) == 0: return ds_CO_data_empty, df_CO_info_empty
     
         # case 2.2: concatenate the datasets and save to the disk
-        ds_CO_data = datasets.concatenate_datasets([v for _, v in Path_to_DS.items()])
+        try:
+            ds_CO_data = datasets.concatenate_datasets([v for _, v in Path_to_DS.items()])
+        except:
+            print(self.COName)
+            ds_CO_data = datasets.concatenate_datasets([v for _, v in Path_to_DS.items()])
         df_CO_info = ds_CO_data.select_columns(['caseobs_id']).to_pandas().reset_index()
         df_CO_info = df_CO_info.set_index('caseobs_id').rename(columns = {'index': 'caseobs_idx_in_data'})
         return ds_CO_data, df_CO_info
@@ -780,6 +785,7 @@ class CaseFeatureTransformer:
         COName_list = [COName for COName in COName_to_COInfo]
         self.COName_to_COInfo = COName_to_COInfo
         self.CFName = convert_CONameList_to_CFName(COName_list, name_CaseGamma)
+        self.name_CaseGamma = name_CaseGamma
         self.fn_CaseGamma = fn_CaseGamma
         self.CF_vocab = CF_vocab
         self.co_to_COvocab = {self.COName_to_co[COName]: COInfo['CO_vocab'] for COName, COInfo in COName_to_COInfo.items()}
@@ -965,7 +971,8 @@ class CaseFeatureTransformer:
         # case 1: we don't need to use the CO data from the disk
         if self.use_CF_from_disk is False: return ds_CF_data_empty, df_CF_info_empty
 
-        if CFids is not None: logger.info(f'provided casefeat_ids num: {len(CFids)}')
+        co_list = '; '.join([i for i in self.co_to_COName])
+        if CFids is not None: logger.info(f'{self.name_CaseGamma} & {co_list}: provided casefeat_ids num: {len(CFids)}')
         
         if not os.path.exists(CF_Folder_data): os.makedirs(CF_Folder_data)    
         
@@ -995,7 +1002,7 @@ class CaseFeatureTransformer:
                 if len(overlap) == 0: continue
 
             # append it to ds_data_path.
-            logger.info(f'get pre-calcuated CF from: {ds_data_path}')
+            # logger.info(f'get pre-calcuated CF from: {ds_data_path}')
             Path_to_DS[ds_data_path] = ds
             
         # case 2.1: still no information

@@ -58,7 +58,7 @@ def load_cohort_args(recfldtkn_config_path, SPACE = None, use_inference = False)
     # cohort_args['Ckpd_ObservationS'] = Ckpd_ObservationS
     return cohort_args
 
-def load_record_args(RecName, cohort_args, use_inference = False, recfldtkn_config_path = None):
+def load_record_args(RecName, cohort_args,  use_inference = False, recfldtkn_config_path = None, ):
     SPACE = cohort_args['SPACE']
     recfldtkn_config_path = cohort_args['recfldtkn_config_path']
     file_path = os.path.join(recfldtkn_config_path, 'Record', f'{RecName}.yaml')
@@ -83,6 +83,12 @@ def load_record_args(RecName, cohort_args, use_inference = False, recfldtkn_conf
     record_args['pypath'] = os.path.join(cohort_args['recattr_pyfolder'], f'{RecName}.py')
     record_args['recfldtkn_config_path'] = recfldtkn_config_path
     record_args['yaml_file_path'] = file_path
+    
+    if 'FldTknInfo' not in record_args:
+        record_args['FldTknInfo'] = {} 
+        
+    if record_args['FldTknInfo'] is None:
+        record_args['FldTknInfo'] = {} 
 
     if use_inference:
         CohortInfo = record_args.get('CohortInfo', {})
@@ -110,9 +116,12 @@ def load_fldtkn_args(RecName, FldTknName, cohort_args, recfldtkn_config_path = N
     logger.info(f'file_path in load_fldtkn_args: {file_path}')
     assert os.path.exists(file_path)
     # with open(file_path, 'r') as file: record_args = yaml.safe_load(file)
-    record_args = load_record_args(RecName, cohort_args, recfldtkn_config_path)
+    record_args = load_record_args(RecName, cohort_args, recfldtkn_config_path = recfldtkn_config_path)
     
     fldtkn_args = {}
+    
+    # print(record_args)
+    # print([i for i in record_args])
     fldtkn_args = record_args['FldTknInfo'].get(FldTknName, fldtkn_args)
     
     fldtkn_args['SPACE'] = cohort_args['SPACE']
@@ -203,7 +212,9 @@ def load_rft_config(recfldtkn_config_path,
         rec_yaml_path = os.path.join(recfldtkn_config_path, 'Record', f'{RecName}.yaml')
         if not os.path.exists(rec_yaml_path): 
             logger.warning(f'[YAML] {rec_yaml_path} does not exist'); continue
-        rec_config = load_record_args(RecName, base_config, use_inference, recfldtkn_config_path)
+        rec_config = load_record_args(RecName, base_config, 
+                                      use_inference = use_inference, 
+                                      recfldtkn_config_path = recfldtkn_config_path)
         
         pypath = rec_config['pypath']
         # print(pypath)

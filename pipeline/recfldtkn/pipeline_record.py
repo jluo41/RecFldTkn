@@ -7,6 +7,12 @@ from functools import reduce
 from .configfn import load_cohort_args, load_record_args, load_fldtkn_args
 from .loadtools import load_module_variables, load_ds_rec_and_info 
 from .observer import Tokenizer_Transform, DS_Rec_Info_Generator
+
+from datasets import disable_caching
+
+disable_caching()
+
+
 # Setup basic configuration for logging
 
 logger = logging.getLogger(__name__)
@@ -182,6 +188,11 @@ def get_CohortLevel_df_Human2RawRecNum(OneCohort_config,
     df_Human['CohortLabel'] = CohortLabel
     cols = ['PID'] + [i for i in df_Human.columns if i not in ['PID']]
     df_Human = df_Human[cols].reset_index(drop = True)
+
+    
+
+    columns = [i for i in RawName_to_dfRaw if i in df_Human.columns] 
+    df_Human[columns] = df_Human[columns].astype(float)
 
     return df_Human
 
@@ -617,14 +628,16 @@ def pipeline_from_dfRaw_to_dsRec(PipelineInfo,
                                 base_config['RecName'] + '_data')
     if load_from_disk == True and os.path.exists(path_dfHuman):
         logger.info(f'Load from disk: {path_dfHuman} ...')
-        df_Human, _ = load_ds_rec_and_info(base_config['RecName'], base_config)
+        ds_Human, _ = load_ds_rec_and_info(base_config['RecName'], base_config)
+        df_Human = ds_Human.to_pandas()
     else:
         df_Human = get_CohortLevel_df_Human2RawRecNum(OneCohort_config, 
                                                       rft_config, 
                                                       RawName_to_dfRaw)
+        ds_Human = datasets.Dataset.from_pandas(df_Human)
     if save_to_disk == True: 
         logger.info(f'Save df_Human to: {path_dfHuman}')
-        df_Human.save_to_disk(path_dfHuman)
+        ds_Human.save_to_disk(path_dfHuman)
         
     # Step 2: ds_Rec - prepare information
     RecName_to_FldTkn_list = {}

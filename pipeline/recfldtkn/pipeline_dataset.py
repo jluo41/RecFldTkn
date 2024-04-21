@@ -19,11 +19,11 @@ from .loadtools import fetch_casetag_tools, fetch_casefilter_tools
 
 from .loadtools import fetch_trigger_tools
 from .pipeline_case import get_ds_case_to_process
-from .pipeline_case import process_df_casefeat_tasks_in_chunks
+from .pipeline_case import process_df_split_casefeat_tasks_in_chunks, process_df_split_casefeat_tasks_in_chunks_with_multiprocess
 from .pipeline_case import process_df_tagging_tasks_in_chunks
 from .pipeline_case import process_df_filtering_tasks
 from .pipeline_case import assign_caseSplitTag_to_dsCase
-from .pipeline_case import get_dfset_from_SetName
+from .pipeline_case import get_dfset_from_SetName, process_df_case_spliting_tasks
 
 
 logger = logging.getLogger(__name__)
@@ -117,7 +117,10 @@ def pipeline_to_generate_dfcase_and_dataset(RecName_to_dsRec,
             SplitMethod = f'rs{RANDOM_SEED}.ds{downsample_ratio}.out{out_ratio}ts{test_ratio}vd{valid_ratio}' 
             FinalOutCaseSetName = FinalOutCaseSetName + '-' + SplitMethod
     else:
-        FinalOutCaseSetName = InputCaseSetName + '-' + FinalCaseSetName_SUFFIX
+        if len(CaseFeat_List) > 0 or CaseSplitConfig is not None:
+            FinalOutCaseSetName = InputCaseSetName
+        else:
+            FinalOutCaseSetName = InputCaseSetName + '-' + FinalCaseSetName_SUFFIX
 
     path = os.path.join(SPACE['DATA_CaseSet'], FinalOutCaseSetName + '.p')
     # print(os.getcwd())
@@ -179,112 +182,72 @@ def pipeline_to_generate_dfcase_and_dataset(RecName_to_dsRec,
         df_case = df_case.sort_values(case_id_columns).reset_index(drop = True)
         df_case.to_pickle(path)
 
-
     results['FinalOutCaseSetName'] = FinalOutCaseSetName
     results['df_case'] = df_case.copy()
 
 
     # =========================== Part 2: ds_data ===========================
-    logger.info(f'-------------- SAVE df_case to DATA_CASE --------------')
-    dataset_name = '.'.join(CaseFeat_List)  
-    dataset_path = os.path.join(SPACE['DATA_TASK'], FinalOutCaseSetName, dataset_name)
-
-    # print(os.getcwd())
-    # print(dataset_path)
-    # print(os.path.exists(dataset_path))
-    # return None
-
-    if os.path.exists(dataset_path) and LOAD_DS_DATA == True:
-        logger.info(f'-------------- load ds_case from DATA_TASK --------------')
-        
-        data_path = dataset_path + '/data'
-        logger.info(f'load ds_case from: {data_path}')
-        ds_case_cf_dict = datasets.DatasetDict.load_from_disk(data_path)
-
-        vocab_path = dataset_path + '/vocab'
-        with open(vocab_path, 'rb') as f:
-            cf_to_CFVocab = pickle.load(f)
-
-        PROC_DS_DATA = False
-
-    else:
-        logger.info(f'-------------- execute processing ds_case --------------')
-        PROC_DS_DATA = True
-
-
-
-    if PROC_DS_DATA:
-        logger.info(f'-------------- (2.a) Dataset Split: {CaseSplitConfig} --------------')
-        ds_case_dict = {}
-
-        case_id_columns = Trigger_Tools['case_id_columns']
-
-        if len(CaseSplitConfig) > 0:
-            df_case_learning = df_case.copy()
-            TrainSetName = CaseSplitConfig['TrainSetName']
-            EvalSetNames = CaseSplitConfig['EvalSetNames']
-            
-            SubGroupFilterMethod = {}
-            d = {}
-            for SetName in [TrainSetName] + EvalSetNames:
-                df_set = get_dfset_from_SetName(df_case_learning, SetName, case_id_columns, SubGroupFilterMethod)
-                ds_set = datasets.Dataset.from_pandas(df_set)
-                d[SetName] = ds_set
-            ds_case_dict = datasets.DatasetDict(d)
-            logger.info(f'ds_case_dict: {ds_case_dict}')
-
-        else:
-            d = {'inference': datasets.Dataset.from_pandas(df_case[case_id_columns].reset_index(drop = True))}
-            ds_case_dict = datasets.DatasetDict(d)
     
-
-
-        logger.info(f'-------------- (2.b) Dataset Case Fielding: {CaseFeat_List} --------------')
+    
+    logger.info(f'-------------- (2.a) Dataset Split: {CaseSplitConfig} --------------')
+    ds_case_dict = {}
+    case_id_columns = Trigger_Tools['case_id_columns']
+    if type(CaseSplitConfig) == str:
+        ds_case_dict = process_df_case_spliting_tasks(df_case, CaseSplitConfig, case_id_columns, SPACE)
+    else:
+        ds_case_dict = datasets.DatasetDict({'inference': datasets.Dataset.from_pandas(df_case[case_id_columns].reset_index(drop = True))})
+    logger.info(f'ds_case_dict: \n{ds_case_dict}')
+        
+        
+    logger.info(f'-------------- (2.b) Dataset Case Fielding: {CaseFeat_List} --------------')
+    if len(CaseFeat_List) > 0:
+        
+        if CASE_TAGGING_PROC_CONFIG['num_processors'] > 1:
+            
+            
+            DSCF_results = process_df_split_casefeat_tasks_in_chunks_with_multiprocess(
+                                                            ds_case_dict, 
+                                                            FinalOutCaseSetName,
+                                                            case_id_columns,
+                                                            CaseFeat_List, 
+                                                            cf_to_CaseFeatConfig, 
+                                                            cohort_args,
+                                                            SPACE, 
+                                                            RecName_to_dsRec, 
+                                                            RecName_to_dsRecInfo,
+                                                            SAVE_DS_DATA = SAVE_DS_DATA, 
+                                                            LOAD_DS_DATA = LOAD_DS_DATA, 
+                                                            dataset_name = FinalCaseSetName_SUFFIX,
+                                                            **CASE_FIEDLING_PROC_CONFIG,
+                                                        )
+        else: 
+            DSCF_results = process_df_split_casefeat_tasks_in_chunks(
+                                                            ds_case_dict, 
+                                                            FinalOutCaseSetName,
+                                                            case_id_columns,
+                                                            CaseFeat_List, 
+                                                            cf_to_CaseFeatConfig, 
+                                                            cohort_args,
+                                                            SPACE, 
+                                                            RecName_to_dsRec, 
+                                                            RecName_to_dsRecInfo,
+                                                            SAVE_DS_DATA = SAVE_DS_DATA, 
+                                                            LOAD_DS_DATA = LOAD_DS_DATA, 
+                                                            dataset_name = FinalCaseSetName_SUFFIX,
+                                                            **CASE_FIEDLING_PROC_CONFIG,
+                                                        )
+    
+        ds_case_cf_dict = DSCF_results['ds_case_fullcf_dict']
+        cf_to_CFVocab = DSCF_results['cf_to_CFVocab']
+    else: 
         ds_case_cf_dict = {}
         cf_to_CFVocab = {}
-        if len(CaseFeat_List) > 0:
-            for split, ds in ds_case_dict.items():
-                df_case_neat = ds.to_pandas()
-                cf_to_CaseFeatInfo, df_case_neat = process_df_casefeat_tasks_in_chunks(df_case_neat, 
-                                                                                cohort_label_list,
-                                                                                case_id_columns,
-                                                                                InputCaseSetName, 
-                                                                                CaseFeat_List, 
-                                                                                cf_to_CaseFeatConfig, 
-                                                                                cohort_args,
-                                                                                SPACE, 
-                                                                                RecName_to_dsRec, 
-                                                                                RecName_to_dsRecInfo,
-                                                                                **CASE_FIEDLING_PROC_CONFIG)
-                
-                ds_case_cf_dict[split] = df_case_neat
-            cf_to_CFVocab = {cf: Info['CF_vocab'] for cf, Info in cf_to_CaseFeatInfo.items()}
-
-
-    if SAVE_DS_DATA == True and len(ds_case_cf_dict) > 0:
-        logger.info(f'-------------- SAVE df_case to DATA_CASE --------------')
-        dataset_name = '.'.join(CaseFeat_List)  
-        dataset_path = os.path.join(SPACE['DATA_TASK'], InputCaseSetName, dataset_name)
         
-        # dataset
-        data_path = dataset_path + '/data'
-        logger.info(f'data_path: {data_path}')
-        ds_case_cf_dict = datasets.DatasetDict(ds_case_cf_dict) 
-        ds_case_cf_dict.save_to_disk(data_path)
-        
-        # vocab
-        vocab_path = dataset_path + '/vocab'
-        logger.info(f'vocab_path: {vocab_path}')
-        with open(vocab_path, 'wb') as f:
-            pickle.dump(cf_to_CFVocab, f)
-
     results['cf_to_CFVocab'] = cf_to_CFVocab
     results['ds_case_cf_dict'] = ds_case_cf_dict
     logger.info(ds_case_cf_dict)
     logger.info(f'-------------- Done --------------')  
     return results
-
-
 
 
 def create_tokenizer_from_CF_vocab(CF_vocab):

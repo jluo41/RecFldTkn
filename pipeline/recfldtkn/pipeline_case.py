@@ -1,7 +1,7 @@
 import os
 import logging
-
-
+import pickle 
+import shutil
 import numpy as np 
 import pandas as pd
 
@@ -174,11 +174,15 @@ def fn_casefeat_querying(ds_case,
     batch_size = CaseFeatInfo.get('batch_size', 1000)
     CaseFeatName = CaseFeatInfo['CaseFeatName']
     # CF_vocab = CaseFeatInfo['CF_vocab']
+
+
+    #---------------------------------------------
     ds_case = ds_case.map(FnCaseFeatGamma, 
-                            batched = True, 
-                            batch_size= batch_size, 
-                            load_from_cache_file = False, 
-                            new_fingerprint = CaseFeatName)
+                          batched = True, 
+                          batch_size= batch_size, 
+                          load_from_cache_file = False, 
+                          new_fingerprint = CaseFeatName)
+    #---------------------------------------------
     
     if len(FnCaseFeatGamma.new_CFs) > 0 and use_CF_from_disk == True:
         logger.info(f'----- Save CF {CaseFeatName}: to Cache File -----')
@@ -388,7 +392,6 @@ def _process_chunk_tagging(chunk_id, df_case, chunk_size,
         return None
 
 
-
 def process_df_tagging_tasks_in_chunks(df_case, 
                                        cohort_label_list,
                                        case_id_columns,
@@ -464,212 +467,430 @@ def process_df_tagging_tasks_in_chunks(df_case,
     return InputCaseSetName, df_case_tagged_final
 
 
+
+
 ######### casefeat tasks #########
-def process_df_casefeat_tasks(df_case, 
-                              cohort_label_list,
-                              case_id_columns,
-                              InputCaseSetName, 
-                              CaseFeat_List, 
-                              cf_to_CaseFeatConfig, 
-                              cohort_config,
-                              SPACE, 
-                              RecName_to_dsRec, 
-                              RecName_to_dsRecInfo,
-                              use_CF_from_disk, 
-                              use_CO_from_disk, 
-                              chunk_id, 
-                              start_idx, 
-                              end_idx, 
-                              chunk_size,
-                              save_to_pickle):
+def process_df_case_one_casefeat(df_case, 
+                                 case_id_columns,
+                                 CaseFeat, 
+                                 CaseFeatConfig, 
+                                 cohort_config,
+                                 RecName_to_dsRec, 
+                                 RecName_to_dsRecInfo,
+                                 use_CF_from_disk, 
+                                 use_CO_from_disk, 
+                                 chunk_id = None, 
+                                 start_idx = None, 
+                                 end_idx = None, 
+                                 chunk_size = None, 
+                                 splitname = None, 
+                                 ):
     
     ds_case = datasets.Dataset.from_pandas(df_case)
-    cf_to_CaseFeatInfo = {}
-    for CaseFeat in CaseFeat_List:
-        logger.info(f'--------- CaseFeat {CaseFeat} -------------')
+    # logger.info()
+    logger.info(f'process: df_case: {len(df_case)}, splitname: {splitname}, CaseFeat: {CaseFeat}, chunk_id: {chunk_id}, s{start_idx}-e{end_idx} -------------')
+    case_observations = CaseFeatConfig['case_observations']
+    name_CaseGamma = CaseFeatConfig['name_CaseGamma']
+    #############################
+    Gamma_Config = {
+        'case_observations':case_observations,
+        'name_CaseGamma': name_CaseGamma, # CF
+    }
+    #############################
+    CaseFeatInfo = get_fn_case_GammaFullInfo(Gamma_Config, 
+                                             cohort_config, 
+                                             RecName_to_dsRec, 
+                                             RecName_to_dsRecInfo, 
+                                             df_case[case_id_columns],
+                                             use_CF_from_disk,
+                                             use_CO_from_disk)    
 
-        assert  CaseFeat in cf_to_CaseFeatConfig
-        CaseFeatConfig = cf_to_CaseFeatConfig[CaseFeat]
-        case_observations = CaseFeatConfig['case_observations']
-        name_CaseGamma = CaseFeatConfig['name_CaseGamma']
-        old_columns = ds_case.column_names
-        CaseFeatInfo, ds_case = fn_casefeat_querying(ds_case, 
-                                                     cohort_config, 
-                                                     case_id_columns,
-                                                     case_observations, 
-                                                     name_CaseGamma, 
-                                                     RecName_to_dsRec,
-                                                     RecName_to_dsRecInfo, 
-                                                     use_CF_from_disk, 
-                                                     use_CO_from_disk)
-        
-        new_columns = [i for i in ds_case.column_names if i not in old_columns]
-        rename_dict = {i: CaseFeat + '.' + i for i in new_columns}
-        for old_name, new_name in rename_dict.items():
-            ds_case = ds_case.rename_column(old_name, new_name)
-        cf_to_CaseFeatInfo[CaseFeat] = CaseFeatInfo
-    # OutputCaseSetName = '-'.join([InputCaseSetName, 'cf.'+'.'.join(CaseFeat_List)])
-    return cf_to_CaseFeatInfo, ds_case
-
-
-def _process_chunk_casefeat(chunk_id, df_case, chunk_size, 
-                           cohort_label_list, case_id_columns,
-                           InputCaseSetName, CaseFeat_List, cf_to_CaseFeatConfig, cohort_config,
-                           SPACE, RecName_to_dsRec, RecName_to_dsRecInfo, 
-                           use_CF_from_disk, use_CO_from_disk, save_to_pickle):
-    # start_idx = chunk_id * chunk_size
-    # end_idx = min((chunk_id + 1) * chunk_size, len(df_case))
-    # df_case_chunk = df_case.iloc[start_idx:end_idx].reset_index(drop=True)
-    # _, df_case_chunk_casefeat = process_df_casefeat_tasks(
-    #     df_case_chunk, 
-    #     cohort_label_list,
-    #     case_id_columns,
-    #     InputCaseSetName, 
-    #     CaseFeat_List, 
-    #     cf_to_CaseFeatConfig,  
-    #     cohort_config,
-    #     SPACE, 
-    #     RecName_to_dsRec, 
-    #     RecName_to_dsRecInfo,
-    #     use_CF_from_disk, 
-    #     use_CO_from_disk,
-    #     chunk_id, 
-    #     start_idx, 
-    #     end_idx, 
-    #     chunk_size,
-    #     save_to_pickle,
-    # )
-    # return df_case_chunk_casefeat
-
-    try:
-        start_idx = chunk_id * chunk_size
-        end_idx = min((chunk_id + 1) * chunk_size, len(df_case))
-        df_case_chunk = df_case.iloc[start_idx:end_idx].reset_index(drop=True)
-        _, df_case_chunk_casefeat = process_df_casefeat_tasks(
-                df_case_chunk, 
-                cohort_label_list,
-                case_id_columns,
-                InputCaseSetName, 
-                CaseFeat_List, 
-                cf_to_CaseFeatConfig,  
-                cohort_config,
-                SPACE, 
-                RecName_to_dsRec, 
-                RecName_to_dsRecInfo,
-                use_CF_from_disk, 
-                use_CO_from_disk,
-                chunk_id, 
-                start_idx, 
-                end_idx, 
-                chunk_size,
-                save_to_pickle,
-            )
-        return df_case_chunk_casefeat
     
-    except Exception as e:
-        # logger.error(f"Exception in main processing loop: {e}")
-        print(f'\n\n\n There is an error: {e} \n\n\n')
-        logger.error(f"Exception in chunk {chunk_id}: {e}")
-        return None
-        
-
-
-def process_df_casefeat_tasks_in_chunks(df_case, 
-                                        cohort_label_list,
-                                        case_id_columns,
-                                        InputCaseSetName, 
-                                        CaseFeat_List, 
-                                        cf_to_CaseFeatConfig, 
-                                        cohort_config,
-                                        SPACE, 
-                                        RecName_to_dsRec, 
-                                        RecName_to_dsRecInfo,
-                                        use_CF_from_disk, 
-                                        use_CO_from_disk,
-                                        start_chunk_id = 0, 
-                                        end_chunk_id = None, 
-                                        chunk_size = 500000,
-                                        save_to_pickle = False, 
-                                        num_processors = 1):
+    old_columns = ds_case.column_names 
+    # ------------------ this is for mapping -----------------
+    CaseFeatInfo, ds_case = fn_casefeat_querying(ds_case, 
+                                                cohort_config, 
+                                                case_id_columns,
+                                                case_observations, 
+                                                name_CaseGamma, 
+                                                RecName_to_dsRec,
+                                                RecName_to_dsRecInfo, 
+                                                use_CF_from_disk, 
+                                                use_CO_from_disk)
     
-    # --------------- cf_to_CaseFeatInfo ---------------
-    cf_to_CaseFeatInfo = {}
-    for CaseFeat in CaseFeat_List:
-        assert  CaseFeat in cf_to_CaseFeatConfig
-        CaseFeatConfig = cf_to_CaseFeatConfig[CaseFeat]
-        case_observations = CaseFeatConfig['case_observations']
-        name_CaseGamma = CaseFeatConfig['name_CaseGamma']
-        #############################
-        Gamma_Config = {
-            'case_observations':case_observations,
-            'name_CaseGamma': name_CaseGamma, # CF
-        }
-        #############################
-        # df_case = ds_case.select_columns(case_id_columns).to_pandas()
-        CaseFeatInfo = get_fn_case_GammaFullInfo(Gamma_Config, 
-                                                 cohort_config, 
-                                                 RecName_to_dsRec, 
-                                                 RecName_to_dsRecInfo, 
-                                                 df_case[case_id_columns],
-                                                 use_CF_from_disk,
-                                                 use_CO_from_disk)
-        cf_to_CaseFeatInfo[CaseFeat] = CaseFeatInfo
-        
+    new_columns = [i for i in ds_case.column_names if i not in old_columns]
+    rename_dict = {i: CaseFeat + '.' + i for i in new_columns}
+    for old_name, new_name in rename_dict.items():
+        ds_case = ds_case.rename_column(old_name, new_name)
     
-    # --------------- get the tagging method name ---------------
-    OutputCaseSetName = '-'.join([InputCaseSetName, 'Tagging'])
-    Folder = os.path.join(SPACE['DATA_CaseSet'], OutputCaseSetName + f'Size{chunk_size}')
+    # ------------------ do you want one with set transform? -----------------
+    CF_vocab = CaseFeatInfo['CF_vocab']
 
-    # --------------- process tagging tasks ---------------
-    if end_chunk_id is None: end_chunk_id = len(df_case) // chunk_size + 1
-    chunk_id_list = range(start_chunk_id, end_chunk_id)
+    results = {
+        'ds_case': ds_case, 
+        'CF_vocab': CF_vocab, 
+        'CaseFeat': CaseFeat, 
+        'chunk_id': chunk_id, 
+        'chunk_size':  chunk_size, 
+        'start_idx': start_idx, 
+        'end_idx': end_idx, 
+        'splitname':  splitname, 
+    }
 
-    ds_case_chunk_casefeat_list = []
-    if num_processors > 1:
-        # with ProcessPoolExecutor(max_workers=num_processors) as executor:
-        #     df_case_chunk_tagged_list = list(executor.map(process_chunk, chunk_id_list))
-        with ProcessPoolExecutor(max_workers = num_processors) as executor:
-            futures = [executor.submit(
-                        _process_chunk_casefeat, 
-                            chunk_id, df_case, chunk_size, 
-                           cohort_label_list, case_id_columns,
-                           InputCaseSetName, CaseFeat_List, cf_to_CaseFeatConfig, cohort_config,
-                           SPACE, RecName_to_dsRec, RecName_to_dsRecInfo, 
-                           use_CF_from_disk, use_CO_from_disk, save_to_pickle) 
+    return results 
+
+
+def process_df_split_casefeat_tasks_in_chunks(ds_case_dict, 
+                                              FinalOutCaseSetName,
+                                               
+                                                case_id_columns,
+                                                CaseFeat_List, 
+                                                cf_to_CaseFeatConfig, 
+                                                cohort_config,
+                                                SPACE, 
+                                                RecName_to_dsRec, 
+                                                RecName_to_dsRecInfo,
+                                                use_CF_from_disk, 
+                                                use_CO_from_disk,
+                                                dataset_name = None, 
+                                              
+                                                start_chunk_id = 0, 
+                                                end_chunk_id = None, 
+                                                chunk_size = 500000,
+                                                num_processors = 1, 
+                                                
+                                                SAVE_DS_DATA = False, 
+                                                LOAD_DS_DATA = False, 
+                                                ):
+    
+    
+    dataset_name = dataset_name if dataset_name is not None else '.'.join(CaseFeat_List)  
+    dataset_path = os.path.join(SPACE['DATA_TASK'], FinalOutCaseSetName, dataset_name)
+    vocab_path = dataset_path + '/vocab.p'
+    
+    ds_case_fullcf_dict = {}
+    cf_to_CFVocab = {}
+    if LOAD_DS_DATA == True and os.path.exists(vocab_path):
+        with open(vocab_path, 'rb') as f: cf_to_CFVocab = pickle.load(f)
+
+    for splitname, ds_case in ds_case_dict.items():
+        df_case = ds_case.to_pandas()
+        # make sure you have a clean df_case here.
+        assert len(df_case.columns) == len(case_id_columns)
+        cf_to_ds_case_split_cf = {}
+        
+        for CaseFeat in CaseFeat_List:
+            ds_case_split_cf_result_list = []
+            ##################################
+            split_cf_data_path = os.path.join(dataset_path, splitname, CaseFeat)
+            CaseFeatConfig = cf_to_CaseFeatConfig[CaseFeat].copy()
+            ##################################
+            
+            if LOAD_DS_DATA == True and os.path.exists(split_cf_data_path):
+                logger.info(f'loading {split_cf_data_path} -----')
+                ds_case_split_cf = datasets.load_from_disk(split_cf_data_path)
+                with open(vocab_path, 'rb') as f: cf_to_CFVocab_from_disk = pickle.load(f)
+                CFVocab = cf_to_CFVocab_from_disk[CaseFeat]
+                df_index = ds_case_split_cf.select_columns(case_id_columns).to_pandas()
+                assert df_index.equals(df_case)
+                logger.info(f'\n\n\n\n----------------------load from disk: ds {len(df_case)}: CaseFeat [{CaseFeat}] splitname [{splitname}]') 
+                cf_to_ds_case_split_cf[CaseFeat] = ds_case_split_cf
+                cf_to_CFVocab[CaseFeat] = CFVocab
+                continue
+            
+            # if end_chunk_id is None: end_chunk_id = len(df_case) // chunk_size + 1
+            # chunk_id_list = list(range(start_chunk_id, end_chunk_id))
+            
+            ##################### during looping, end_chunk_id_current will be updated ###############
+            end_chunk_id_current = len(df_case) // chunk_size + 1 if end_chunk_id is None else end_chunk_id
+            chunk_id_list = list(range(start_chunk_id, end_chunk_id_current))
                 
-                for chunk_id in chunk_id_list]
+            logger.info(f'\n\n\n\n----------------------ds {len(df_case)}: START one CaseFeat [{CaseFeat}] for splitname [{splitname}]') 
+            logger.info(f'chunk_id_list {chunk_id_list}') 
+            
+            for chunk_id in chunk_id_list:
+                start_idx = chunk_id * chunk_size
+                end_idx = min((chunk_id + 1) * chunk_size, len(df_case))
+                df_case_chunk = df_case.iloc[start_idx:end_idx].reset_index(drop=True)     
+                logger.info(f'ds {len(df_case_chunk)}') 
+                if len(df_case_chunk) == 0: continue
+                
+                results = process_df_case_one_casefeat(df_case_chunk, 
+                                                        case_id_columns,
+                                                        CaseFeat, 
+                                                        CaseFeatConfig, 
+                                                        cohort_config,
+                                                        RecName_to_dsRec, 
+                                                        RecName_to_dsRecInfo,
+                                                        use_CF_from_disk, 
+                                                        use_CO_from_disk, 
+                                                        chunk_id, 
+                                                        start_idx, 
+                                                        end_idx, 
+                                                        chunk_size, 
+                                                        splitname, 
+                                                        )
+                ds_case_split_cf_result_list.append(results)
+            logger.info(f'ds {len(df_case)}: finish one CaseFeat [{CaseFeat}] for splitname [{splitname}]\n\n\n') 
+            logger.info(f'\n\n++++++++ DONE ds: {len(df_case)}, splitname: {splitname}, CaseFeat {CaseFeat}, ') 
+            logger.info(f'the number of results in ds_case_split_cf_result_list: {len(ds_case_split_cf_result_list)}') 
+                  
+          
+            # pin down all chunk for one splitname's one CF: ds_case_split_cf
+            ds_case_split_cf_result_list = sorted(ds_case_split_cf_result_list, key=lambda x: x['chunk_id'])
+            
+            for i in ds_case_split_cf_result_list:
+                logger.info(i['ds_case'])
+                
+            ds_case_split_cf = concatenate_datasets([i['ds_case'] for i in ds_case_split_cf_result_list])
+            CFVocab = ds_case_split_cf_result_list[0]['CF_vocab']  
+                
+            
+            cf_to_ds_case_split_cf[CaseFeat] = ds_case_split_cf
+            cf_to_CFVocab[CaseFeat] = CFVocab
+            
+            
+            if SAVE_DS_DATA == True and not os.path.exists(split_cf_data_path):
+                ds_case_split_cf.save_to_disk(split_cf_data_path)
+            if SAVE_DS_DATA == True: 
+                with open(vocab_path, 'wb') as f: pickle.dump(cf_to_CFVocab, f)
+                
+        # pin down all splitname
+        ds_case_list = [ds_case] 
+        for cf, ds_case_split_cf in cf_to_ds_case_split_cf.items():
+            # df_index0 = ds_case.to_pandas()
+            df_case = ds_case.to_pandas()
+            df_index = ds_case_split_cf.select_columns(case_id_columns).to_pandas()
+            assert df_index.equals(df_case)
+            
+            ds_case_split_cf = ds_case_split_cf.remove_columns(case_id_columns) 
+            logger.info(f'cf {cf}: ds_case_split_cf: {ds_case_split_cf.column_names}')
+            ds_case_list.append(ds_case_split_cf)
+            
+        ds_case_split = concatenate_datasets(ds_case_list, axis = 1)    
+        ds_case_fullcf_dict[splitname] = ds_case_split 
+        
+    results = {
+        'ds_case_fullcf_dict': ds_case_fullcf_dict,
+        'cf_to_CFVocab': cf_to_CFVocab,
+    }
+            
+    return results
 
-            # for future in as_completed(futures):
-            #     ds_case_chunk_casefeat_list.append(future.result())
-            #     # future.result()
-            for idx, future in enumerate(as_completed(futures)):
-                chunk_id = chunk_id_list[idx]
-                try:
-                    result = future.result()
-                    if result is not None:
-                        logger.info(f'chunk_id: {chunk_id}, df_case_chunk_tagged: {result.shape}')
-                        ds_case_chunk_casefeat_list.append(result)
-                    else:
-                        logger.error(f"Error processing chunk {chunk_id}")
-                except Exception as e:
-                    logger.error(f"Exception in main processing loop: {e}")
 
+def process_df_split_casefeat_tasks_in_chunks_with_multiprocess(ds_case_dict, 
+                                                                FinalOutCaseSetName,
+                                                                case_id_columns,
+                                                                CaseFeat_List, 
+                                                                cf_to_CaseFeatConfig, 
+                                                                cohort_config,
+                                                                SPACE, 
+                                                                RecName_to_dsRec, 
+                                                                RecName_to_dsRecInfo,
+                                                                use_CF_from_disk, 
+                                                                use_CO_from_disk,
+                                                                dataset_name = None, 
+                                                                start_chunk_id = 0, 
+                                                                end_chunk_id = None, 
+                                                                chunk_size = 500000,
+                                                                num_processors = 4, 
+                                                                SAVE_DS_DATA = False, 
+                                                                LOAD_DS_DATA = False, 
+                                                                ):
+    
+    assert num_processors > 1
+    
+    
+    dataset_name = dataset_name if dataset_name is not None else '.'.join(CaseFeat_List)  
+    dataset_path = os.path.join(SPACE['DATA_TASK'], FinalOutCaseSetName, dataset_name)
+    vocab_path = dataset_path + '/vocab.p'
+    
+    
+    if LOAD_DS_DATA == True and os.path.exists(vocab_path): 
+        with open(vocab_path, 'rb') as f: cf_to_CFVocab = pickle.load(f)
     else:
-        for chunk_id in chunk_id_list:
-            ds_case_chunk_casefeat = _process_chunk_casefeat(
-                                        chunk_id, df_case, chunk_size, 
-                                        cohort_label_list, case_id_columns,
-                                        InputCaseSetName, CaseFeat_List, cf_to_CaseFeatConfig, cohort_config,
-                                        SPACE, RecName_to_dsRec, RecName_to_dsRecInfo, 
-                                        use_CF_from_disk, use_CO_from_disk, save_to_pickle
-                                    ) 
-            logger.info(f'chunk_id: {chunk_id}, df_case_chunk_tagged: {ds_case_chunk_casefeat.shape}')
-            ds_case_chunk_casefeat_list.append(ds_case_chunk_casefeat)
-                            
-                            
-    logger.info(f'concatenating datasets: length is {len(ds_case_chunk_casefeat_list)}')
-    ds_case = concatenate_datasets(ds_case_chunk_casefeat_list)
-    return cf_to_CaseFeatInfo, ds_case
+        cf_to_CFVocab = {}
+    
+    
+    ##########################################
+    splitname_to_cf_to_DsCase = {}
+    splitname_to_cf_to_chunk_to_DsCase = {}
+    ##########################################
+    
+    with ProcessPoolExecutor(max_workers=num_processors) as executor:
+        for splitname, ds_case in ds_case_dict.items():
+            
+            splitname_to_cf_to_DsCase[splitname] = {}
+            splitname_to_cf_to_chunk_to_DsCase[splitname] = {}
+            df_case = ds_case.to_pandas()
+            assert len(df_case.columns) == len(case_id_columns)
+        
+            
+            for cf in CaseFeat_List:
+                
+                splitname_to_cf_to_chunk_to_DsCase[splitname][cf] = []
+                split_cf_data_path = os.path.join(dataset_path, splitname, cf)
+                CaseFeatConfig = cf_to_CaseFeatConfig[cf].copy()
+            
+                if LOAD_DS_DATA == True and os.path.exists(split_cf_data_path):
+                    logger.info(f'loading {split_cf_data_path} -----')
+                    ds_case_split_cf = datasets.load_from_disk(split_cf_data_path)
+                    
+                    
+                    
+                    df_index = ds_case_split_cf.select_columns(case_id_columns).to_pandas()
+                    if df_index.equals(df_case):
+                        logger.info(f'\n\n\n\n----------------------load from disk: ds {len(df_case)}: cf [{cf}] splitname [{splitname}]') 
+                        splitname_to_cf_to_DsCase[splitname][cf] = ds_case_split_cf
+                        
+                        with open(vocab_path, 'rb') as f: cf_to_CFVocab_from_disk = pickle.load(f)
+                        CFVocab = cf_to_CFVocab_from_disk[cf]
+                    
+                        cf_to_CFVocab[cf] = CFVocab
+                        continue
+                    else:
+                        
+                        logger.info(f'\n\n\n\n----------------------fail to load from disk: ds {len(df_case)}: cf [{cf}] splitname [{splitname}]') 
+                        # splitname_to_cf_to_DsCase[splitname][cf] = ds_case_split_cf
+                        # cf_to_CFVocab[cf] = CFVocab
+                        del ds_case_split_cf
+                        shutil.rmtree(split_cf_data_path)
+                        
+                
+                # if end_chunk_id is None: end_chunk_id_current = len(df_case) // chunk_size + 1
+                end_chunk_id_current = len(df_case) // chunk_size + 1 if end_chunk_id is None else end_chunk_id
+                chunk_id_list = list(range(start_chunk_id, end_chunk_id_current))
+                
+                logger.info(f'\n\n\n\n----------------------ds {len(df_case)}: START one cf [{cf}] for splitname [{splitname}]') 
+                logger.info(f'chunk_id_list {chunk_id_list}') 
+                
+                for chunk_id in chunk_id_list:
+                    start_idx = chunk_id * chunk_size
+                    end_idx = min((chunk_id + 1) * chunk_size, len(df_case))
+                    df_case_chunk = df_case.iloc[start_idx:end_idx].reset_index(drop=True)     
+                    if len(df_case_chunk) == 0: continue
+                    #########################################################################
+                    future = executor.submit(
+                                        process_df_case_one_casefeat, 
+                                            df_case_chunk, 
+                                            case_id_columns,
+                                            cf, 
+                                            CaseFeatConfig, 
+                                            cohort_config,
+                                            RecName_to_dsRec, 
+                                            RecName_to_dsRecInfo,
+                                            use_CF_from_disk, 
+                                            use_CO_from_disk, 
+                                            chunk_id, 
+                                            start_idx, 
+                                            end_idx, 
+                                            chunk_size, 
+                                            splitname,
+                                        )
+                    #########################################################################
+                    splitname_to_cf_to_chunk_to_DsCase[splitname][cf].append(future)
+                    
+                
+                logger.info(f'feature numbers {len(splitname_to_cf_to_chunk_to_DsCase[splitname][cf])}')
+                # ds_case_split_cf_result_dict = splitname_to_cf_to_chunk_to_DsCase[splitname][cf]
+                # logger.info(f'ds {len(df_case)}: finish one cf [{cf}] for splitname [{splitname}]\n\n\n') 
+                # logger.info(f'\n\n++++++++ DONE ds: {len(df_case)}, splitname: {splitname}, CaseFeat {cf}, ') 
+                # logger.info(f'the number of results in ds_case_split_cf_result_list: {len(ds_case_split_cf_result_dict)}') 
+                
+                
+                
+    ds_case_fullcf_dict = {}
+    for splitname, ds_case in ds_case_dict.items():
+        # splitname_to_cf_to_DsCase # [splitname]
+        splitname_to_cf_to_chunk_to_DsCase # 
+
+        for cf, chunk_to_DsCase_future_list in splitname_to_cf_to_chunk_to_DsCase[splitname].items():
+            # pin down all chunk for one splitname's one CF: ds_case_split_cf
+            
+            chunk_to_DsCase = []
+            logger.info(f"************for splitname-cf-chunk: {splitname} {cf} --- futures number is: {len(chunk_to_DsCase_future_list)}")
+            for future in as_completed(chunk_to_DsCase_future_list):
+                results = future.result()
+                chunk_to_DsCase.append(results)
+                
+            chunk_to_DsCase = sorted(chunk_to_DsCase, key=lambda x: x['chunk_id'])
+            for i in chunk_to_DsCase: 
+                logger.info(f"************for splitname-cf-chunk: {splitname} {cf} chunk_id: {i['chunk_id']}: {i['ds_case']}")
+            ds_case_split_cf = concatenate_datasets([i['ds_case'] for i in chunk_to_DsCase])
+            CFVocab = chunk_to_DsCase[0]['CF_vocab']  
+            
+            split_cf_data_path = os.path.join(dataset_path, splitname, cf)
+            if SAVE_DS_DATA == True and not os.path.exists(split_cf_data_path):
+                logger.info(f'saving {split_cf_data_path} -----')
+                ds_case_split_cf.save_to_disk(split_cf_data_path)
+            if SAVE_DS_DATA == True: 
+                with open(vocab_path, 'wb') as f: pickle.dump(cf_to_CFVocab, f)
+                
+            splitname_to_cf_to_DsCase[splitname][cf] = ds_case_split_cf
+            cf_to_CFVocab[cf] = CFVocab
+                
+        # pin down all splitname
+        ds_case_list = [ds_case] 
+        for cf, ds_case_split_cf in splitname_to_cf_to_DsCase[splitname].items():
+            df_case = ds_case.to_pandas()
+            df_index = ds_case_split_cf.select_columns(case_id_columns).to_pandas()
+            logger.info('before matching df_case.shape: {} ---- df_index.shape: {}'.format(df_case.shape, df_index.shape))
+            assert df_index.equals(df_case)
+            ds_case_split_cf = ds_case_split_cf.remove_columns(case_id_columns) 
+            logger.info(f'successfully matched! {splitname} {cf}: ds: {len(ds_case_split_cf)} ds_case_split_cf: {ds_case_split_cf.column_names}')
+            ds_case_list.append(ds_case_split_cf)
+            
+        ds_case_split = concatenate_datasets(ds_case_list, axis = 1)    
+        ds_case_fullcf_dict[splitname] = ds_case_split 
+        
+        logger.info(f'Finishing one splitname [{splitname}]\n\n\n')
+        
+    results = {
+        'ds_case_fullcf_dict': ds_case_fullcf_dict,
+        'cf_to_CFVocab': cf_to_CFVocab,
+    }
+            
+    return results
+
+
+# if num_processors > 1:
+
+# with ProcessPoolExecutor(max_workers = num_processors) as executor:
+# for CaseFeat in CaseFeat_List:
+#     futures = []
+#     logger.info(f'\n\n\n\n-----------------ds {len(df_case)}: START one CaseFeat [{CaseFeat}] for splitname [{splitname}] with num_proccessors [{num_processors}]') 
+#     logger.info(f'chunk_id_list {chunk_id_list}') 
+#     for chunk_id in chunk_id_list:
+#         start_idx = chunk_id * chunk_size
+#         end_idx = min((chunk_id + 1) * chunk_size, len(df_case))
+#         df_case_chunk = df_case.iloc[start_idx:end_idx].reset_index(drop=True)
+        
+#         future = executor.submit(
+#                     process_df_case_one_casefeat, 
+#                         df_case_chunk, 
+#                         case_id_columns,
+#                         CaseFeat, 
+#                         CaseFeatConfig, 
+#                         cohort_config,
+#                         RecName_to_dsRec, 
+#                         RecName_to_dsRecInfo,
+#                         use_CF_from_disk, 
+#                         use_CO_from_disk, 
+#                         chunk_id, 
+#                         start_idx, 
+#                         end_idx, 
+#                         chunk_size, 
+#                         splitname, 
+#                     ) 
+#         futures.append(future)
+
+#     logger.info(f'total number of tasks: {len(futures)}')
+#     for idx, future in enumerate(as_completed(futures)):
+#         results = future.result()
+#         ds_case_split_cf_result_list.append(results)
+        
+#     logger.info(f'ds {len(df_case)}: finish one CaseFeat [{CaseFeat}] for splitname [{splitname}] with num_proccessors [{num_processors}]\n\n\n') 
+
 
 
 ######### split tasks #########
@@ -752,7 +973,6 @@ def assign_caseSplitTag_to_dsCase(df_case,
     return df_dsmp
 
 
-
 ######### filtering tasks #########
 def process_df_filtering_tasks(df_case, FilterMethod_List, SPACE):
     for FilterMethod in FilterMethod_List:
@@ -765,6 +985,19 @@ def process_df_filtering_tasks(df_case, FilterMethod_List, SPACE):
         df_case = fn_case_filtering(df_case)
         logger.info(f'after filtering: {df_case.shape}')
     return df_case
+
+
+def process_df_case_spliting_tasks(df_case, CaseSplitConfig, case_id_columns, SPACE):
+    # for FilterMethod in FilterMethod_List:
+    
+    pypath = os.path.join(SPACE['CODE_FN'], 'fn_learning', f'{CaseSplitConfig}.py')
+    module = load_module_variables(pypath)
+
+    conduct_spliting_ds_case = module.conduct_spliting_ds_case
+    # logger.info(f'before spliting: {df_case.shape}')
+    ds_case_dict = conduct_spliting_ds_case(df_case, case_id_columns)
+    # logger.info(f'after spliting: {ds_case_dict}')
+    return ds_case_dict
 
 ######### inference tasks #########
 

@@ -142,7 +142,8 @@ def filter_with_cohort_label(df, cohort_label, cohort_args):
 
 def load_ds_rec_and_info(record_name, cohort_args, cohort_label_list = None):
     SPACE = cohort_args['SPACE']
-    cohort_list = [i for i in os.listdir(SPACE['DATA_RFT'])]
+    cohort_list = sorted([i for i in os.listdir(SPACE['DATA_RFT'])])
+    # print(cohort_list)
     if cohort_label_list is not None:
         cohort_label_list = [str(i) for i in cohort_label_list]
         cohort_list = [i for i in cohort_list if i.split('-')[0] in cohort_label_list]
