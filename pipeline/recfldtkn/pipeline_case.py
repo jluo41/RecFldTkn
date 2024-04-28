@@ -673,6 +673,7 @@ def process_df_split_casefeat_tasks_in_chunks(ds_case_dict,
     results = {
         'ds_case_fullcf_dict': ds_case_fullcf_dict,
         'cf_to_CFVocab': cf_to_CFVocab,
+        'case_id_columns': case_id_columns,
     }
             
     return results
@@ -848,6 +849,7 @@ def process_df_split_casefeat_tasks_in_chunks_with_multiprocess(ds_case_dict,
     results = {
         'ds_case_fullcf_dict': ds_case_fullcf_dict,
         'cf_to_CFVocab': cf_to_CFVocab,
+        'case_id_columns': case_id_columns,
     }
             
     return results
